@@ -1,0 +1,137 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  PASSENGER
+  DRIVER
+}
+
+enum RideStatus {
+  SEARCHING
+  SCHEDULED
+  ACCEPTED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  MOMO
+}
+
+enum VehicleType {
+  CAR
+  TRICYCLE
+  MOTORBIKE
+  BICYCLE
+  MINIVAN
+  BUS
+}
+
+enum VehicleServiceKind {
+  PRIVATE
+  SHARED
+}
+
+enum RequestSource {
+  APP
+  USSD
+  SCHEDULED
+}
+
+enum TransactionKind {
+  TRIP_CREDIT
+  COMMISSION_DEBIT
+  WITHDRAWAL
+  TOP_UP
+}
+
+model User {
+  id               String         @id @default(cuid())
+  role             UserRole
+  name             String
+  phone            String         @unique
+  passwordHash     String
+  preferredPayment PaymentMethod?
+  momoProvider     String         @default("MTN MoMo")
+  trustedContacts  Json?
+  lowBandwidthMode Boolean        @default(false)
+  safetyShareEnabled Boolean      @default(true)
+  kycStatus        String?
+  wallet           Wallet?
+  passengerRides   Ride[]         @relation("PassengerRides")
+  driverRides      Ride[]         @relation("DriverRides")
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+model Vehicle {
+  id          String             @id @default(cuid())
+  category    VehicleType
+  serviceKind VehicleServiceKind
+  seats       Int
+  description String
+  active      Boolean            @default(true)
+  baseFareGhs Float
+  etaMinutes  Int
+  nearbyCount Int
+  rides       Ride[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+}
+
+model Ride {
+  id               String        @id @default(cuid())
+  status           RideStatus
+  requestSource    RequestSource @default(APP)
+  pickup           String
+  destination      String
+  pickupGuidance   String?
+  distanceKm       Float
+  etaMinutes       Int
+  passengers       Int
+  estimatedFareGhs Float
+  paymentMethod    PaymentMethod
+  momoProvider     String?
+  momoReference    String?
+  safetyPin        String?
+  trustedContactCount Int        @default(0)
+  lowBandwidthBooking Boolean    @default(false)
+  scheduledFor     DateTime?
+  passenger        User          @relation("PassengerRides", fields: [passengerId], references: [id])
+  passengerId      String
+  driver           User?         @relation("DriverRides", fields: [driverId], references: [id])
+  driverId         String?
+  vehicle          Vehicle       @relation(fields: [vehicleId], references: [id])
+  vehicleId        String
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+}
+
+model Wallet {
+  id                   String        @id @default(cuid())
+  user                 User          @relation(fields: [userId], references: [id])
+  userId               String        @unique
+  balanceGhs           Float         @default(0)
+  cashGhs              Float         @default(0)
+  momoGhs              Float         @default(0)
+  pendingWithdrawalGhs Float         @default(0)
+  transactions         Transaction[]
+  updatedAt            DateTime      @updatedAt
+}
+
+model Transaction {
+  id        String          @id @default(cuid())
+  wallet    Wallet          @relation(fields: [walletId], references: [id])
+  walletId  String
+  kind      TransactionKind
+  amountGhs Float
+  channel   String
+  createdAt DateTime        @default(now())
+}

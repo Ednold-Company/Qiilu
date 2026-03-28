@@ -1,0 +1,1362 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Qiilu Driver</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+
+/* ══ DESIGN TOKENS ══ */
+:root,[data-theme="light"]{
+  --or:#F55D00;--or2:#FF7B22;--or3:#C44900;
+  --lime:#6BB827;--lime2:#4F9118;--lime-a:rgba(107,184,39,.12);
+  --red:#E02B50;--blue:#0062FF;
+  --ussd:#7C34C4;--ussd-a:rgba(124,52,196,.1);
+  --bg:#F5F6F1;--bg2:#FFFFFF;--bg3:#ECEEE7;--bg4:#E2E5DA;
+  --txt:#171A10;--txt2:#636B54;--txt3:#A2AA8E;
+  --brd:rgba(23,26,16,.08);--brd-o:rgba(245,93,0,.28);--brd-l:rgba(107,184,39,.28);
+  --sh:0 1px 6px rgba(23,26,16,.06);--sh2:0 6px 24px rgba(23,26,16,.10);--sh3:0 12px 40px rgba(23,26,16,.14);
+  --nav:rgba(245,246,241,.96);
+  --fd:'Syne',sans-serif;--fb:'DM Sans',sans-serif;--fm:'Space Mono',monospace;
+  --bar:56px;--nav-h:62px;--sb:env(safe-area-inset-bottom,0px);
+  --r:14px;--r2:10px;--r3:8px;
+}
+[data-theme="dark"]{
+  --bg:#080A06;--bg2:#0F1209;--bg3:#171A12;--bg4:#1F231A;
+  --txt:rgba(255,255,255,.92);--txt2:rgba(255,255,255,.48);--txt3:rgba(255,255,255,.22);
+  --brd:rgba(255,255,255,.07);--brd-o:rgba(245,93,0,.28);--brd-l:rgba(107,184,39,.24);
+  --sh:0 2px 10px rgba(0,0,0,.35);--sh2:0 6px 28px rgba(0,0,0,.5);--sh3:0 14px 44px rgba(0,0,0,.6);
+  --nav:rgba(8,10,6,.97);
+  --ussd-a:rgba(124,52,196,.15);
+}
+
+html,body{height:100%;height:-webkit-fill-available;overflow:hidden}
+body{background:#020302;color:var(--txt);font-family:var(--fb);display:flex;align-items:center;justify-content:center;transition:background .25s}
+
+/* ── SHELL ── */
+#app{position:relative;width:100%;max-width:430px;height:100dvh;height:-webkit-fill-available;display:flex;flex-direction:column;background:var(--bg);overflow:hidden;box-shadow:0 0 0 1px rgba(0,0,0,.07),0 32px 80px rgba(0,0,0,.5);transition:background .25s}
+
+/* ── TOPBAR ── */
+#topbar{flex-shrink:0;height:var(--bar);padding:0 16px;display:flex;align-items:center;justify-content:space-between;background:var(--bg2);border-bottom:1px solid var(--brd);z-index:50;box-shadow:var(--sh);transition:all .25s}
+.logo-wrap{display:flex;flex-direction:column;gap:0}
+.logo-txt{font-family:var(--fd);font-size:20px;font-weight:800;letter-spacing:-1px;background:linear-gradient(120deg,#F55D00 30%,#6BB827);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;line-height:1}
+.logo-sub{font-family:var(--fm);font-size:8px;color:var(--txt3);letter-spacing:2px;text-transform:uppercase;margin-top:1px}
+.tb-r{display:flex;align-items:center;gap:8px}
+.spill{display:flex;align-items:center;gap:6px;padding:6px 13px;border-radius:100px;font-family:var(--fd);font-size:11px;font-weight:700;cursor:pointer;transition:all .18s;border:1.5px solid}
+.spill.on{background:rgba(107,184,39,.1);color:var(--lime2);border-color:rgba(107,184,39,.3)}
+.spill.off{background:var(--bg3);color:var(--txt2);border-color:var(--brd)}
+.ldot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.ldot.on{background:var(--lime);box-shadow:0 0 6px rgba(107,184,39,.7);animation:blink 1.4s infinite}
+.ldot.off{background:var(--txt3)}
+.tbtn{width:34px;height:34px;background:var(--bg3);border:1px solid var(--brd);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;cursor:pointer;position:relative;transition:all .18s}
+.tbtn:hover{border-color:var(--brd-o)}
+.bdg{position:absolute;top:1px;right:1px;width:9px;height:9px;background:var(--red);border-radius:50%;border:2px solid var(--bg2)}
+
+/* ── PAGES ── */
+#pages{flex:1;min-height:0;position:relative;overflow:hidden}
+.page{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none;opacity:0;pointer-events:none;transform:translateX(18px);transition:opacity .22s ease,transform .22s ease;padding-bottom:calc(var(--nav-h) + var(--sb) + 10px)}
+.page::-webkit-scrollbar{display:none}
+.page.active{opacity:1;pointer-events:all;transform:translateX(0)}
+.page.leaving{transform:translateX(-18px);opacity:0}
+
+/* ── NAV ── */
+#nav{flex-shrink:0;height:calc(var(--nav-h) + var(--sb));padding-bottom:var(--sb);background:var(--nav);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-top:1px solid var(--brd);display:flex;align-items:stretch;z-index:100;transition:all .25s}
+.nb{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:none;border:none;color:var(--txt3);cursor:pointer;position:relative;padding:0;transition:color .18s;-webkit-tap-highlight-color:transparent;min-width:0}
+.nb.active{color:var(--or)}
+.nb-line{position:absolute;top:0;left:50%;transform:translateX(-50%);height:2.5px;width:0;background:linear-gradient(90deg,var(--or),var(--lime));border-radius:0 0 3px 3px;transition:width .22s ease}
+.nb.active .nb-line{width:24px}
+.nb svg{transition:transform .16s}
+.nb:active svg{transform:scale(.82)}
+.nb-l{font-family:var(--fd);font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
+.n-badge{position:absolute;top:5px;right:calc(50% - 16px);min-width:16px;height:16px;background:var(--red);border-radius:100px;border:2px solid var(--bg);font-size:9px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:center;padding:0 3px;opacity:0;transform:scale(0);transition:opacity .2s,transform .2s}
+.n-badge.on{opacity:1;transform:scale(1)}
+
+/* ══ ANIMATIONS ══ */
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.15}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes carFloat{0%,100%{transform:translate(0,0) rotate(0)}40%{transform:translate(6px,-4px) rotate(2.5deg)}75%{transform:translate(-4px,3px) rotate(-2deg)}}
+@keyframes ping{0%{opacity:.55;transform:scale(1)}100%{opacity:0;transform:scale(2.2)}}
+@keyframes routeDraw{from{stroke-dashoffset:600}to{stroke-dashoffset:0}}
+@keyframes pulseDot{0%{transform:scale(1);opacity:.65}100%{transform:scale(2.6);opacity:0}}
+@keyframes sosAnim{0%{box-shadow:0 0 0 0 rgba(224,43,80,.45)}70%{box-shadow:0 0 0 26px rgba(224,43,80,0)}100%{box-shadow:0 0 0 0 rgba(224,43,80,0)}}
+@keyframes reqIn{from{opacity:0;transform:translateY(-12px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes countdown{from{stroke-dashoffset:0}to{stroke-dashoffset:200}}
+@keyframes shimmer{0%{opacity:.4}50%{opacity:1}100%{opacity:.4}}
+@keyframes slideDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+
+.f0{animation:fadeUp .27s ease both}
+.f1{animation:fadeUp .27s .06s ease both}
+.f2{animation:fadeUp .27s .12s ease both}
+.f3{animation:fadeUp .27s .18s ease both}
+.f4{animation:fadeUp .27s .24s ease both}
+.f5{animation:fadeUp .27s .30s ease both}
+.f6{animation:fadeUp .27s .36s ease both}
+
+/* ══ MAP ══ */
+.mwrap{position:relative;overflow:hidden;background:var(--bg3);transition:background .25s}
+.mgrid{position:absolute;inset:0;background-image:linear-gradient(rgba(107,184,39,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(107,184,39,.05) 1px,transparent 1px);background-size:30px 30px}
+.mglow{position:absolute;width:280px;height:280px;background:radial-gradient(circle,rgba(245,93,0,.07) 0%,transparent 70%);top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none}
+.mroad{position:absolute}
+.mroad.h{height:8px;width:100%;background:rgba(0,0,0,.04)}
+.mroad.v{width:8px;height:100%;background:rgba(0,0,0,.04)}
+[data-theme="dark"] .mroad{background:rgba(255,255,255,.04)!important}
+.mcar{position:absolute;width:28px;height:28px;background:var(--or);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;box-shadow:0 0 18px rgba(245,93,0,.45);animation:carFloat 4s ease-in-out infinite;z-index:2}
+.mcar::after{content:'';position:absolute;inset:-7px;border-radius:15px;border:1.5px solid rgba(245,93,0,.18);animation:ping 2.4s ease-out infinite}
+.msvg{position:absolute;inset:0;pointer-events:none;z-index:1}
+.rp{stroke:var(--or);stroke-width:2.5;fill:none;stroke-linecap:round;stroke-dasharray:600;stroke-dashoffset:600;animation:routeDraw 1.4s ease forwards .1s}
+.rp-bg{stroke:rgba(245,93,0,.12);stroke-width:7;fill:none;stroke-linecap:round}
+.rp.lime{stroke:var(--lime)}
+.rp-bg.lime{stroke:rgba(107,184,39,.12)}
+.mpin{position:absolute;display:flex;flex-direction:column;align-items:center;z-index:3}
+.mpd{width:11px;height:11px;border-radius:50%;border:2.5px solid #fff;box-shadow:var(--sh)}
+.mps{width:1.5px;height:7px}
+.mpl{font-family:var(--fm);font-size:8px;background:var(--bg2);border:1px solid var(--brd);border-radius:5px;padding:2px 7px;white-space:nowrap;color:var(--txt2);margin-top:2px;box-shadow:var(--sh)}
+.mbadge{position:absolute;background:var(--bg2);border:1px solid var(--brd);border-radius:8px;padding:5px 10px;font-family:var(--fm);font-size:9px;color:var(--lime2);display:flex;align-items:center;gap:5px;pointer-events:none;box-shadow:var(--sh)}
+.pr{position:absolute;border-radius:50%;z-index:4;transform:translate(-50%,-50%)}
+.pr::before,.pr::after{content:'';position:absolute;inset:0;border-radius:50%;animation:pulseDot 2s ease-out infinite}
+.pr::after{animation-delay:.7s}
+.pr.lime,.pr.lime::before,.pr.lime::after{background:var(--lime)}
+.pr.or,.pr.or::before,.pr.or::after{background:var(--or)}
+
+/* ══ SHARED COMPONENTS ══ */
+.sec-h{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 8px}
+.sec-t{font-family:var(--fd);font-size:14px;font-weight:800;color:var(--txt)}
+.sec-a{font-size:11px;color:var(--or);font-weight:600;cursor:pointer}
+.card{background:var(--bg2);border:1px solid var(--brd);border-radius:var(--r);box-shadow:var(--sh);transition:all .15s}
+.card:hover{box-shadow:var(--sh2)}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;padding:3px 9px;border-radius:100px;font-family:var(--fd)}
+.pill.g{background:rgba(107,184,39,.12);color:var(--lime2);border:1px solid rgba(107,184,39,.25)}
+.pill.o{background:rgba(245,93,0,.1);color:var(--or);border:1px solid rgba(245,93,0,.2)}
+.pill.r{background:rgba(224,43,80,.1);color:var(--red);border:1px solid rgba(224,43,80,.2)}
+.pill.gr{background:var(--bg3);color:var(--txt2);border:1px solid var(--brd)}
+.pill.b{background:rgba(0,98,255,.09);color:var(--blue);border:1px solid rgba(0,98,255,.2)}
+.pill.u{background:var(--ussd-a);color:var(--ussd);border:1px solid rgba(124,52,196,.25)}
+.btn-p{width:100%;padding:14px;background:linear-gradient(135deg,var(--or),var(--or2));color:#fff;border:none;border-radius:var(--r);font-family:var(--fd);font-size:14px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;transition:opacity .15s,transform .15s;box-shadow:0 4px 16px rgba(245,93,0,.28);letter-spacing:.3px}
+.btn-p:active{opacity:.88;transform:scale(.98)}
+.btn-p.lime{background:linear-gradient(135deg,var(--lime),var(--lime2));box-shadow:0 4px 16px rgba(107,184,39,.3)}
+.btn-p.red{background:linear-gradient(135deg,var(--red),#b81e3c);box-shadow:0 4px 16px rgba(224,43,80,.28)}
+.btn-p.ussd{background:linear-gradient(135deg,var(--ussd),#5a1fa3)}
+.btn-o{width:100%;padding:13px;background:transparent;color:var(--txt2);border:1.5px solid var(--brd);border-radius:var(--r);font-family:var(--fd);font-size:13px;font-weight:700;cursor:pointer;transition:all .15s}
+.btn-o:hover{border-color:var(--brd-o);color:var(--txt)}
+.btn-sm{padding:9px 16px;border-radius:var(--r2);font-family:var(--fd);font-size:12px;font-weight:700;cursor:pointer;border:none;transition:all .14s;display:inline-flex;align-items:center;justify-content:center;gap:5px;flex-shrink:0}
+.btn-sm.acc{background:var(--lime);color:#fff;box-shadow:0 3px 12px rgba(107,184,39,.32)}
+.btn-sm.acc:active{opacity:.85;transform:scale(.96)}
+.btn-sm.rej{background:rgba(224,43,80,.1);color:var(--red);border:1.5px solid rgba(224,43,80,.2)}
+.btn-sm.rej:active{opacity:.85;transform:scale(.96)}
+
+/* ══ HOME PAGE ══ */
+.earn-hero{background:linear-gradient(135deg,var(--or) 0%,var(--or3) 100%);margin:12px 16px 0;border-radius:var(--r);padding:18px;position:relative;overflow:hidden;box-shadow:0 6px 24px rgba(245,93,0,.28)}
+.earn-hero::before{content:'';position:absolute;right:-24px;top:-24px;width:130px;height:130px;background:rgba(255,255,255,.07);border-radius:50%}
+.earn-hero::after{content:'';position:absolute;left:50%;bottom:-30px;width:100px;height:100px;background:rgba(255,255,255,.04);border-radius:50%}
+.eh-z{position:relative;z-index:1}
+.eh-label{font-family:var(--fm);font-size:9px;color:rgba(255,255,255,.6);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:3px}
+.eh-amount{font-family:var(--fd);font-size:30px;font-weight:800;color:#fff;line-height:1}
+.eh-sub{font-size:11px;color:rgba(255,255,255,.68);margin-top:4px}
+.eh-stats{display:flex;gap:8px;margin-top:12px}
+.eh-s{flex:1;background:rgba(255,255,255,.11);border-radius:var(--r2);padding:9px 8px;text-align:center}
+.eh-sv{font-family:var(--fd);font-size:14px;font-weight:800;color:#fff}
+.eh-sl{font-size:9px;color:rgba(255,255,255,.58);margin-top:1px}
+
+/* ── REQUEST CARDS ── */
+.req-wrap{margin:10px 16px 0;animation:reqIn .28s ease}
+.req-card{background:var(--bg2);border-radius:var(--r);overflow:hidden;box-shadow:var(--sh2);border:2px solid}
+.req-card.app-r{border-color:rgba(245,93,0,.3)}
+.req-card.ussd-r{border-color:rgba(124,52,196,.32)}
+.req-card.sched-r{border-color:rgba(0,98,255,.28)}
+.req-hdr{padding:10px 14px 6px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--brd)}
+.req-type{display:flex;align-items:center;gap:5px;font-family:var(--fd);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px}
+.req-type.app{color:var(--or)}
+.req-type.ussd{color:var(--ussd)}
+.req-type.sched{color:var(--blue)}
+.req-timer{display:flex;align-items:center;gap:4px}
+.t-svg{width:22px;height:22px}
+.t-bg{fill:none;stroke:var(--brd);stroke-width:3}
+.t-arc{fill:none;stroke:var(--red);stroke-width:3;stroke-linecap:round;stroke-dasharray:56;animation:countdown 20s linear forwards}
+.t-num{font-family:var(--fm);font-size:9px;color:var(--red)}
+.ussd-note{font-family:var(--fm);font-size:9px;color:var(--ussd);padding:5px 14px 4px;display:flex;align-items:center;gap:5px}
+.sched-note{font-family:var(--fm);font-size:9px;color:var(--blue);padding:5px 14px 4px;display:flex;align-items:center;gap:5px}
+.req-route{padding:8px 14px}
+.rr-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--txt);font-weight:500}
+.rr-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.rr-stem{width:1.5px;height:11px;background:var(--brd);margin-left:3px}
+.req-pills{display:flex;flex-wrap:wrap;gap:5px;padding:0 14px 10px}
+.req-btns{display:flex;gap:8px;padding:10px 14px 12px;border-top:1px solid var(--brd)}
+
+/* ── ONLINE OFFLINE CTA ── */
+.offline-cta{margin:10px 16px 0;background:var(--bg3);border:1.5px dashed var(--brd-l);border-radius:var(--r);padding:14px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.oc-txt strong{font-family:var(--fd);font-size:13px;font-weight:700;color:var(--lime2)}
+.oc-txt span{display:block;font-size:11px;color:var(--txt2);margin-top:2px}
+.go-btn{padding:9px 18px;background:var(--lime);color:#fff;border-radius:100px;font-family:var(--fd);font-size:12px;font-weight:800;border:none;cursor:pointer;box-shadow:0 4px 14px rgba(107,184,39,.32);transition:all .15s;white-space:nowrap;flex-shrink:0}
+.go-btn:active{opacity:.85;transform:scale(.97)}
+
+/* ── ACTIVE RIDE BANNER ── */
+.active-banner{margin:10px 16px 0;background:var(--bg2);border:2px solid rgba(107,184,39,.32);border-radius:var(--r);overflow:hidden;box-shadow:var(--sh2);animation:slideDown .28s ease}
+.ab-map{height:120px}
+.ab-body{padding:12px}
+.ab-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.ab-status{display:flex;align-items:center;gap:6px;font-family:var(--fd);font-size:11px;font-weight:700;color:var(--txt)}
+.pdot{width:6px;height:6px;border-radius:50%;background:var(--lime);box-shadow:0 0 6px rgba(107,184,39,.6)}
+.rider-row{display:flex;align-items:center;gap:9px;background:var(--bg3);border-radius:var(--r2);padding:9px 10px;margin-bottom:10px}
+.r-av{width:36px;height:36px;background:rgba(245,93,0,.1);border:1.5px solid rgba(245,93,0,.2);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.r-info{flex:1;min-width:0}
+.r-name{font-family:var(--fd);font-size:12px;font-weight:700;color:var(--txt)}
+.r-sub{font-size:10px;color:var(--txt2);margin-top:1px}
+.r-acts{display:flex;gap:6px}
+.r-act{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer;border:none;transition:opacity .15s}
+.r-act.c{background:rgba(107,184,39,.1);border:1px solid rgba(107,184,39,.2)}
+.r-act.m{background:rgba(245,93,0,.1);border:1px solid rgba(245,93,0,.2)}
+.trip-steps{display:flex;gap:6px;margin-bottom:10px}
+.ts{flex:1;padding:7px 4px;background:var(--bg3);border-radius:var(--r3);text-align:center;font-family:var(--fd);font-size:9px;font-weight:700;color:var(--txt2);cursor:pointer;transition:all .15s;border:1.5px solid transparent}
+.ts.active{background:rgba(245,93,0,.08);color:var(--or);border-color:rgba(245,93,0,.24)}
+.ts.done{background:rgba(107,184,39,.08);color:var(--lime2);border-color:rgba(107,184,39,.2)}
+.ab-fare{display:flex;align-items:flex-end;justify-content:space-between}
+.f-big{font-family:var(--fd);font-size:24px;font-weight:800;color:var(--or);line-height:1}
+.f-lbl{font-size:10px;color:var(--txt2);margin-bottom:2px}
+.f-right{text-align:right}
+.f-dest{font-family:var(--fd);font-size:13px;font-weight:700;color:var(--txt)}
+.f-dlbl{font-size:10px;color:var(--txt2);margin-top:2px}
+.sos-bar{display:flex;align-items:center;gap:8px;background:rgba(224,43,80,.05);border-top:1px solid rgba(224,43,80,.12);padding:10px 14px;cursor:pointer;transition:background .15s}
+.sos-bar:active{background:rgba(224,43,80,.12)}
+.sos-lbl{font-family:var(--fd);font-size:11px;font-weight:700;color:var(--red)}
+
+/* ── EMPTY STATE ── */
+.estate{display:flex;flex-direction:column;align-items:center;text-align:center;padding:32px 16px;gap:9px}
+.e-icon{font-size:36px;opacity:.25}
+.e-ttl{font-family:var(--fd);font-size:14px;font-weight:700;color:var(--txt2)}
+.e-sub{font-size:11px;color:var(--txt3);line-height:1.6;max-width:200px}
+
+/* ══ RIDES PAGE ══ */
+.rtabs{display:flex;border-bottom:1px solid var(--brd);padding:0 16px;background:var(--bg2)}
+.rtab{flex:1;text-align:center;padding:12px 4px 9px;font-family:var(--fd);font-size:11px;font-weight:700;color:var(--txt2);cursor:pointer;border-bottom:2.5px solid transparent;transition:all .18s;white-space:nowrap}
+.rtab.active{color:var(--or);border-bottom-color:var(--or)}
+.rides-list{padding:12px 16px;display:flex;flex-direction:column;gap:9px}
+.hcard{background:var(--bg2);border:1px solid var(--brd);border-radius:var(--r);padding:13px;cursor:pointer;box-shadow:var(--sh);transition:all .15s}
+.hcard:hover{border-color:var(--brd-o);box-shadow:var(--sh2)}
+.hcard:active{transform:scale(.99)}
+.hc-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}
+.hc-date{font-family:var(--fm);font-size:9px;color:var(--txt2)}
+.hc-route{display:flex;flex-direction:column;gap:5px;margin-bottom:9px}
+.hc-pt{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--txt);font-weight:500}
+.hc-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.hc-dot.a{background:var(--lime)}
+.hc-dot.b{background:var(--or)}
+.hc-vl{width:1.5px;height:10px;background:var(--brd);margin-left:2.75px}
+.hc-bot{display:flex;align-items:center;justify-content:space-between;padding-top:9px;border-top:1px solid var(--brd)}
+.hc-rider{display:flex;align-items:center;gap:7px}
+.hc-av{width:22px;height:22px;background:rgba(245,93,0,.1);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px}
+.hc-rn{font-size:11px;font-weight:600;color:var(--txt)}
+.hc-fare{font-family:var(--fd);font-size:15px;font-weight:800;color:var(--or)}
+.hc-net{font-size:9px;color:var(--lime2);text-align:right}
+
+/* ══ WALLET PAGE ══ */
+.wallet-hero{margin:12px 16px 0;border-radius:var(--r);overflow:hidden;box-shadow:var(--sh2)}
+.wh-top{background:linear-gradient(135deg,var(--or) 0%,var(--or3) 100%);padding:18px;position:relative;overflow:hidden}
+.wh-top::before{content:'';position:absolute;right:-20px;top:-20px;width:120px;height:120px;background:rgba(255,255,255,.07);border-radius:50%}
+.wh-z{position:relative;z-index:1}
+.wh-lbl{font-family:var(--fm);font-size:9px;color:rgba(255,255,255,.6);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:3px}
+.wh-total{font-family:var(--fd);font-size:28px;font-weight:800;color:#fff;line-height:1}
+.wh-sub{font-size:11px;color:rgba(255,255,255,.65);margin-top:4px}
+.wh-grid{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid rgba(255,255,255,.15)}
+.wh-cell{padding:12px;text-align:center}
+.wh-cell+.wh-cell{border-left:1px solid rgba(255,255,255,.12)}
+.wh-cv{font-family:var(--fd);font-size:16px;font-weight:800;color:#fff}
+.wh-cl{font-size:9px;color:rgba(255,255,255,.58);margin-top:1px}
+.wh-acts{display:flex;gap:8px;padding:12px;background:var(--bg2);border:1px solid var(--brd);border-top:none;border-radius:0 0 var(--r) var(--r)}
+.wa{flex:1;padding:9px 6px;border-radius:var(--r2);font-family:var(--fd);font-size:11px;font-weight:700;cursor:pointer;border:none;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:4px}
+.wa.wd{background:var(--or);color:#fff;box-shadow:0 3px 12px rgba(245,93,0,.26)}
+.wa.tu{background:var(--lime);color:#fff;box-shadow:0 3px 12px rgba(107,184,39,.26)}
+.wa.hi{background:var(--bg3);color:var(--txt2);border:1px solid var(--brd)}
+
+.plan-section{padding:0 16px 12px}
+.plan-cards{display:flex;flex-direction:column;gap:8px}
+.plan-card{background:var(--bg2);border:2px solid var(--brd);border-radius:var(--r);padding:14px;cursor:pointer;transition:all .15s;position:relative}
+.plan-card.active-plan{border-color:var(--or);box-shadow:0 0 0 3px rgba(245,93,0,.08)}
+.plan-card.active-plan::before{content:'Active';position:absolute;top:12px;right:12px;font-family:var(--fd);font-size:9px;font-weight:800;color:var(--or);background:rgba(245,93,0,.1);padding:3px 8px;border-radius:100px;border:1px solid rgba(245,93,0,.2)}
+.plan-title{font-family:var(--fd);font-size:13px;font-weight:800;color:var(--txt)}
+.plan-sub{font-size:11px;color:var(--txt2);margin-top:2px;line-height:1.5}
+.plan-price{font-family:var(--fd);font-size:16px;font-weight:800;color:var(--or);margin-top:8px}
+.plan-price span{font-size:11px;font-weight:400;color:var(--txt2)}
+
+.comm-box{margin:10px 16px;background:rgba(245,93,0,.05);border:1px solid rgba(245,93,0,.15);border-radius:var(--r2);padding:12px;display:flex;gap:10px}
+.comm-icon{font-size:18px;flex-shrink:0}
+.comm-ttl{font-family:var(--fd);font-size:12px;font-weight:700;color:var(--txt)}
+.comm-sub{font-size:10px;color:var(--txt2);margin-top:2px;line-height:1.5}
+
+.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:0 16px;margin-bottom:10px}
+.sg-card{background:var(--bg2);border:1px solid var(--brd);border-radius:var(--r2);padding:12px;text-align:center;box-shadow:var(--sh)}
+.sg-v{font-family:var(--fd);font-size:16px;font-weight:800;color:var(--or)}
+.sg-l{font-size:9px;color:var(--txt2);margin-top:2px}
+
+.trip-earn-list{background:var(--bg2);border:1px solid var(--brd);border-radius:var(--r);margin:0 16px;overflow:hidden;box-shadow:var(--sh)}
+.te-row{display:flex;align-items:center;gap:10px;padding:11px 13px;border-bottom:1px solid var(--brd);cursor:pointer;transition:background .12s}
+.te-row:last-child{border:none}
+.te-row:hover{background:var(--bg3)}
+.te-icon{width:34px;height:34px;background:rgba(245,93,0,.08);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;border:1px solid var(--brd)}
+.te-body{flex:1;min-width:0}
+.te-route{font-size:12px;font-weight:500;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.te-meta{font-size:10px;color:var(--txt2);margin-top:1px;display:flex;align-items:center;gap:5px}
+.te-earn{text-align:right;flex-shrink:0}
+.te-gross{font-family:var(--fd);font-size:13px;font-weight:800;color:var(--lime2)}
+.te-comm{font-size:9px;color:var(--red);margin-top:1px}
+
+/* ══ MESSAGES ══ */
+.msg-list{padding:10px 16px;display:flex;flex-direction:column;gap:7px}
+.ccard{display:flex;align-items:center;gap:11px;background:var(--bg2);border:1px solid var(--brd);border-radius:var(--r);padding:12px 13px;cursor:pointer;box-shadow:var(--sh);transition:all .15s;position:relative}
+.ccard:hover{border-color:var(--brd-o);box-shadow:var(--sh2)}
+.ccard:active{transform:scale(.99)}
+.ccard.locked{opacity:.5;cursor:not-allowed}
+.ccard.locked:hover{border-color:var(--brd);box-shadow:var(--sh)}
+.ccard.locked:active{transform:none}
+.cav{width:44px;height:44px;background:rgba(245,93,0,.1);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0;position:relative;border:1px solid var(--brd)}
+.cavst{position:absolute;bottom:1px;right:1px;width:10px;height:10px;border-radius:50%;border:2px solid var(--bg2)}
+.cavst.on{background:var(--lime)}
+.cavst.off{background:var(--txt3)}
+.cbody{flex:1;min-width:0}
+.c-name{font-family:var(--fd);font-size:13px;font-weight:700;color:var(--txt)}
+.c-last{font-size:11px;color:var(--txt2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.c-note{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--txt3);margin-top:3px}
+.cmeta{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0}
+.ctime{font-family:var(--fm);font-size:9px;color:var(--txt3)}
+.cunread{width:17px;height:17px;background:var(--or);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff}
+.info-box{background:var(--lime-a);border:1px solid rgba(107,184,39,.2);border-radius:var(--r2);padding:12px;display:flex;gap:9px}
+.info-box p{font-size:11px;color:var(--txt2);line-height:1.6}
+.info-box strong{color:var(--txt)}
+
+/* ══ CHAT ══ */
+#chatview{position:absolute;inset:0;background:var(--bg);display:flex;flex-direction:column;z-index:300;transform:translateX(100%);transition:transform .28s cubic-bezier(.18,.8,.28,1),background .25s}
+#chatview.open{transform:translateX(0)}
+.chattop{flex-shrink:0;height:var(--bar);padding:0 12px;border-bottom:1px solid var(--brd);display:flex;align-items:center;gap:10px;background:var(--bg2);transition:all .25s}
+.chatback{width:32px;height:32px;background:var(--bg3);border:1px solid var(--brd);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px;color:var(--txt);transition:all .15s}
+.chatav{width:34px;height:34px;background:rgba(245,93,0,.1);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;border:1px solid var(--brd)}
+.chat-name{font-family:var(--fd);font-size:13px;font-weight:700;color:var(--txt)}
+.chat-sub{font-size:10px;color:var(--txt2);margin-top:1px}
+.chatmsgs{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:12px;display:flex;flex-direction:column;gap:7px;scrollbar-width:none}
+.chatmsgs::-webkit-scrollbar{display:none}
+.bbl{max-width:78%;padding:9px 12px;border-radius:14px;font-size:12px;line-height:1.5;word-break:break-word;animation:fadeUp .18s ease both}
+.bbl.them{background:var(--bg3);border-bottom-left-radius:3px;align-self:flex-start;color:var(--txt)}
+.bbl.me{background:var(--or);border-bottom-right-radius:3px;align-self:flex-end;color:#fff}
+.bbl-t{font-family:var(--fm);font-size:8px;color:var(--txt3);margin-top:1px}
+.wrap-them{display:flex;flex-direction:column;align-items:flex-start}
+.wrap-me{display:flex;flex-direction:column;align-items:flex-end}
+.chatsys{text-align:center;font-size:10px;color:var(--txt3);font-family:var(--fm);padding:3px 10px;background:var(--bg3);border-radius:100px;align-self:center}
+.chatbar{flex-shrink:0;padding:8px 12px calc(8px + var(--sb));border-top:1px solid var(--brd);background:var(--bg2);display:flex;align-items:flex-end;gap:8px;transition:all .25s}
+.chat-iwrap{flex:1;background:var(--bg3);border:1px solid var(--brd);border-radius:18px;padding:9px 12px;display:flex;align-items:center;transition:border-color .15s;min-height:40px}
+.chat-iwrap:focus-within{border-color:var(--brd-o)}
+.chatfield{flex:1;background:none;border:none;outline:none;color:var(--txt);font-family:var(--fb);font-size:13px;resize:none;max-height:88px;overflow-y:auto;scrollbar-width:none;line-height:1.4;caret-color:var(--or)}
+.chatfield::placeholder{color:var(--txt3)}
+.chatsend{width:40px;height:40px;background:var(--or);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;border:none;transition:opacity .15s,transform .15s}
+.chatsend:active{opacity:.8;transform:scale(.87)}
+.chat-locked{flex-shrink:0;padding:13px;border-top:1px solid rgba(224,43,80,.12);background:rgba(224,43,80,.05);text-align:center;font-size:11px;color:rgba(224,43,80,.7);font-family:var(--fd);font-weight:600}
+
+/* ══ ACCOUNT PAGE ══ */
+.achero{padding:18px 16px;display:flex;align-items:center;gap:13px;border-bottom:1px solid var(--brd);background:var(--bg2)}
+.acav{width:58px;height:58px;background:linear-gradient(135deg,var(--or),var(--or3));border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;box-shadow:0 6px 20px rgba(245,93,0,.28)}
+.ac-name{font-family:var(--fd);font-size:18px;font-weight:800;color:var(--txt)}
+.ac-id{font-family:var(--fm);font-size:9px;color:var(--txt2);margin-top:2px}
+.ac-pills{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}
+.acstats{display:grid;grid-template-columns:repeat(3,1fr);margin:12px 16px;background:var(--bg2);border:1px solid var(--brd);border-radius:var(--r);overflow:hidden;box-shadow:var(--sh)}
+.acstat{padding:13px 10px;text-align:center}
+.acstat+.acstat{border-left:1px solid var(--brd)}
+.as-v{font-family:var(--fd);font-size:18px;font-weight:800;color:var(--or)}
+.as-l{font-size:9px;color:var(--txt2);margin-top:2px}
+.mgroup{padding:0 16px 12px}
+.mglbl{font-family:var(--fm);font-size:9px;color:var(--txt3);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:7px}
+.mlist{background:var(--bg2);border:1px solid var(--brd);border-radius:var(--r);overflow:hidden;box-shadow:var(--sh)}
+.mitem{display:flex;align-items:center;gap:10px;padding:12px 13px;border-bottom:1px solid var(--brd);cursor:pointer;transition:background .12s}
+.mitem:last-child{border-bottom:none}
+.mitem:hover{background:rgba(245,93,0,.03)}
+.mitem:active{background:rgba(245,93,0,.06)}
+.miico{width:32px;height:32px;background:var(--bg3);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;border:1px solid var(--brd)}
+.mibody{flex:1;min-width:0}
+.mi-lbl{font-size:12px;font-weight:500;color:var(--txt)}
+.mi-sub{font-size:10px;color:var(--txt2);margin-top:1px}
+.miright{display:flex;align-items:center;gap:5px;flex-shrink:0}
+.mi-v{font-size:11px;font-weight:600;color:var(--or)}
+.mi-arr{font-size:14px;color:var(--txt3)}
+.tog{width:40px;height:22px;border-radius:100px;position:relative;cursor:pointer;flex-shrink:0;transition:background .2s;border:none;outline:none}
+.tog.on{background:var(--lime)}
+.tog.off{background:var(--brd)}
+.tog::after{content:'';position:absolute;width:16px;height:16px;background:#fff;border-radius:50%;top:3px;transition:left .18s;box-shadow:0 1px 4px rgba(0,0,0,.2)}
+.tog.on::after{left:21px}
+.tog.off::after{left:3px}
+.logout-btn{margin:0 16px 18px;padding:12px;width:calc(100% - 32px);background:rgba(224,43,80,.06);border:1px solid rgba(224,43,80,.14);color:var(--red);border-radius:var(--r2);font-family:var(--fd);font-size:13px;font-weight:700;cursor:pointer;transition:background .15s;display:flex;align-items:center;justify-content:center;gap:6px}
+.logout-btn:hover{background:rgba(224,43,80,.12)}
+
+/* ── FAV section ── */
+.fav-block{background:var(--bg2);border:1px solid var(--brd);border-radius:var(--r);overflow:hidden;box-shadow:var(--sh)}
+.fav-hdr{padding:12px 13px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--brd)}
+.fav-tabs{display:flex}
+.ft{padding:5px 12px;font-family:var(--fd);font-size:10px;font-weight:700;border:1px solid var(--brd);background:var(--bg3);color:var(--txt2);cursor:pointer;transition:all .15s}
+.ft:first-child{border-radius:6px 0 0 6px}
+.ft:last-child{border-radius:0 6px 6px 0;border-left:none}
+.ft.active{background:var(--or);color:#fff;border-color:var(--or)}
+.fav-scroll{display:flex;gap:9px;padding:12px 13px;overflow-x:auto;scrollbar-width:none}
+.fav-scroll::-webkit-scrollbar{display:none}
+.fc{flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;transition:transform .15s}
+.fc:active{transform:scale(.92)}
+.fc-ico{width:44px;height:44px;background:var(--bg3);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;border:1px solid var(--brd)}
+.fc-lbl{font-family:var(--fd);font-size:9px;font-weight:700;color:var(--txt2);white-space:nowrap;max-width:52px;overflow:hidden;text-overflow:ellipsis;text-align:center}
+
+/* ══ MODAL ══ */
+#moverlay{position:absolute;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);z-index:400;display:flex;align-items:flex-end;opacity:0;pointer-events:none;transition:opacity .22s}
+#moverlay.open{opacity:1;pointer-events:all}
+.msheet{width:100%;background:var(--bg2);border-radius:24px 24px 0 0;border-top:1px solid var(--brd);transform:translateY(30px);transition:transform .26s cubic-bezier(.2,.8,.3,1),background .25s;max-height:90vh;display:flex;flex-direction:column;overflow:hidden}
+#moverlay.open .msheet{transform:translateY(0)}
+.mhandle{flex-shrink:0;padding:10px 0 4px;display:flex;justify-content:center}
+.mhbar{width:36px;height:3px;background:var(--brd);border-radius:100px}
+.mbody{overflow-y:auto;overflow-x:hidden;padding:4px 20px 28px;scrollbar-width:none}
+.mbody::-webkit-scrollbar{display:none}
+.m-ttl{font-family:var(--fd);font-size:20px;font-weight:800;margin-bottom:4px;color:var(--txt)}
+.m-sub{font-size:12px;color:var(--txt2);margin-bottom:18px;line-height:1.6}
+.rcrow{display:flex;align-items:center;gap:8px;font-size:12px;padding:3px 0;color:var(--txt)}
+.rcrstem{width:1.5px;height:12px;background:var(--brd);margin:1px 0 1px 3.5px}
+.rcrdot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.fbrow{display:flex;justify-content:space-between;font-size:12px;padding:6px 0;border-bottom:1px solid var(--brd);color:var(--txt2)}
+.fbrow:last-child{border:none;font-weight:700;color:var(--txt);font-size:14px}
+.fbrow:last-child span:last-child{color:var(--lime2)}
+.fldinput{width:100%;background:var(--bg3);border:1px solid var(--brd);border-radius:var(--r2);padding:11px 13px;color:var(--txt);font-family:var(--fb);font-size:13px;outline:none;transition:border-color .15s;margin-bottom:11px}
+.fldinput::placeholder{color:var(--txt3)}
+.fldinput:focus{border-color:var(--brd-o)}
+.nitem{display:flex;gap:10px;padding:12px 0;border-bottom:1px solid var(--brd)}
+.nitem:last-child{border:none}
+.niw{width:36px;height:36px;flex-shrink:0;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px}
+.niw.ride{background:rgba(245,93,0,.1)}
+.niw.promo{background:rgba(107,184,39,.1)}
+.niw.alert{background:rgba(224,43,80,.1)}
+.niw.ussd{background:var(--ussd-a)}
+.ntxt{flex:1;min-width:0}
+.nttl{font-size:12px;font-weight:600;color:var(--txt)}
+.nbdy{font-size:11px;color:var(--txt2);line-height:1.5;margin-top:2px}
+.ntim{font-family:var(--fm);font-size:9px;color:var(--txt3);margin-top:2px}
+.nudot{width:6px;height:6px;background:var(--or);border-radius:50%;flex-shrink:0;margin-top:4px}
+
+/* ══ TOAST ══ */
+#toast{position:absolute;bottom:calc(var(--nav-h) + var(--sb) + 14px);left:50%;transform:translateX(-50%) translateY(8px);background:var(--txt);color:var(--bg2);border-radius:100px;padding:9px 18px;font-size:12px;font-weight:600;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .22s,transform .22s;z-index:999;max-width:calc(100% - 28px);box-shadow:0 4px 20px rgba(0,0,0,.2)}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- ═══ TOPBAR ═══ -->
+<div id="topbar">
+  <div class="logo-wrap">
+    <div class="logo-txt">Qiilu</div>
+    <div class="logo-sub">Driver</div>
+  </div>
+  <div class="tb-r">
+    <button class="spill on" id="spill" onclick="toggleOnline()">
+      <div class="ldot on" id="ldot"></div>
+      <span id="stext">Online</span>
+    </button>
+    <div class="tbtn" onclick="openNotif()">🔔<div class="bdg"></div></div>
+  </div>
+</div>
+
+<!-- ═══ PAGES ═══ -->
+<div id="pages">
+
+<!-- ██████ HOME ██████ -->
+<div class="page active" id="page-home">
+
+  <!-- Map -->
+  <div class="mwrap" id="home-map" style="height:190px">
+    <div class="mgrid"></div><div class="mglow"></div>
+    <div class="mroad h" style="top:41%"></div>
+    <div class="mroad h" style="top:67%;opacity:.4"></div>
+    <div class="mroad v" style="left:29%"></div>
+    <div class="mroad v" style="left:62%;opacity:.5"></div>
+    <svg class="msvg" id="home-svg" style="display:none" viewBox="0 0 430 190">
+      <path class="rp-bg lime" d="M68,155 C108,148 158,122 208,105 C258,88 310,68 368,48"/>
+      <path class="rp lime" d="M68,155 C108,148 158,122 208,105 C258,88 310,68 368,48"/>
+    </svg>
+    <div class="mcar" id="dcar" style="top:35%;left:33%">🛺</div>
+    <div class="mpin" id="pu-pin" style="top:74%;left:12%;display:none">
+      <div class="mpd" style="background:var(--lime)"></div><div class="mps" style="background:rgba(107,184,39,.4)"></div>
+      <div class="mpl" id="pu-lbl">Pickup</div>
+    </div>
+    <div class="mpin" id="do-pin" style="top:16%;left:78%;display:none">
+      <div class="mpd" style="background:var(--or)"></div><div class="mps" style="background:rgba(245,93,0,.4)"></div>
+      <div class="mpl" id="do-lbl">Drop-off</div>
+    </div>
+    <div class="pr lime" id="pu-pulse" style="width:14px;height:14px;top:76%;left:14%;display:none"></div>
+    <div class="mbadge" style="top:9px;left:11px"><div class="ldot on"></div>UCC Gate Area</div>
+    <div class="mbadge" id="map-mode" style="bottom:9px;right:11px">🟢 Available</div>
+  </div>
+
+  <!-- Offline CTA -->
+  <div class="offline-cta f0" id="offline-cta" style="display:none">
+    <div class="oc-txt"><strong>You're Offline</strong><span>Go online to receive ride requests</span></div>
+    <button class="go-btn" onclick="toggleOnline()">Go Online</button>
+  </div>
+
+  <!-- Today earnings hero -->
+  <div class="earn-hero f0">
+    <div class="eh-z">
+      <div class="eh-label">Today's Earnings</div>
+      <div class="eh-amount">GHS 47.50</div>
+      <div class="eh-sub">8 trips completed · 4.5 hrs online</div>
+      <div class="eh-stats">
+        <div class="eh-s"><div class="eh-sv">8</div><div class="eh-sl">Trips</div></div>
+        <div class="eh-s"><div class="eh-sv">4.9⭐</div><div class="eh-sl">Rating</div></div>
+        <div class="eh-s"><div class="eh-sv">GHS 7.13</div><div class="eh-sl">Commission</div></div>
+        <div class="eh-s"><div class="eh-sv">87%</div><div class="eh-sl">Accept rate</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Request queue header -->
+  <div class="sec-h f1">
+    <div class="sec-t">Incoming Requests</div>
+    <span class="pill o" id="req-ct">2 new</span>
+  </div>
+
+  <!-- APP REQUEST -->
+  <div class="req-wrap f1" id="rw-app">
+    <div class="req-card app-r">
+      <div class="req-hdr">
+        <div class="req-type app">📱 App Rider</div>
+        <div class="req-timer">
+          <svg class="t-svg" viewBox="0 0 24 24"><circle class="t-bg" cx="12" cy="12" r="9"/><circle class="t-arc" cx="12" cy="12" r="9" transform="rotate(-90 12 12)"/></svg>
+          <span class="t-num" id="t-app">20</span>s
+        </div>
+      </div>
+      <div class="req-route">
+        <div class="rr-row"><div class="rr-dot" style="background:var(--lime)"></div>UCC Main Gate, Cape Coast</div>
+        <div class="rr-stem"></div>
+        <div class="rr-row"><div class="rr-dot" style="background:var(--or)"></div>Cape Coast Castle, Central</div>
+      </div>
+      <div class="req-pills">
+        <span class="pill gr">📏 1.4 km</span>
+        <span class="pill gr">⏱ ~6 min</span>
+        <span class="pill gr">👤 1 passenger</span>
+        <span class="pill g">GHS 5.00</span>
+        <span class="pill b">📱 MoMo</span>
+      </div>
+      <div class="req-btns">
+        <button class="btn-sm rej" onclick="rejectReq('rw-app')">✕ Reject</button>
+        <button class="btn-sm acc" style="flex:1" onclick="acceptReq('rw-app','Kwame Boateng','👨🏾','Cape Coast Castle','App','5.00','UCC Main Gate','MoMo')">✓ Accept Ride</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- USSD REQUEST -->
+  <div class="req-wrap f2" id="rw-ussd">
+    <div class="req-card ussd-r">
+      <div class="req-hdr">
+        <div class="req-type ussd">📟 USSD Rider</div>
+        <div class="req-timer">
+          <svg class="t-svg" viewBox="0 0 24 24"><circle class="t-bg" cx="12" cy="12" r="9"/><circle class="t-arc" cx="12" cy="12" r="9" transform="rotate(-90 12 12)" style="animation-delay:.6s"/></svg>
+          <span class="t-num" id="t-ussd">15</span>s
+        </div>
+      </div>
+      <div class="ussd-note">📟 Booked via *711# · No app · Cash payment</div>
+      <div class="req-route">
+        <div class="rr-row"><div class="rr-dot" style="background:var(--lime)"></div>Kotokuraba Market</div>
+        <div class="rr-stem"></div>
+        <div class="rr-row"><div class="rr-dot" style="background:var(--or)"></div>Cape Coast Teaching Hospital</div>
+      </div>
+      <div class="req-pills">
+        <span class="pill u">📟 USSD</span>
+        <span class="pill gr">📏 3.2 km</span>
+        <span class="pill gr">⏱ ~12 min</span>
+        <span class="pill gr">👥 2 passengers</span>
+        <span class="pill g">GHS 10.00</span>
+        <span class="pill gr">💵 Cash</span>
+      </div>
+      <div class="req-btns">
+        <button class="btn-sm rej" onclick="rejectReq('rw-ussd')">✕ Reject</button>
+        <button class="btn-sm acc" style="flex:1" onclick="acceptReq('rw-ussd','USSD (*711#)','📟','Teaching Hospital','USSD','10.00','Kotokuraba Market','Cash')">✓ Accept</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCHEDULED REQUEST -->
+  <div class="req-wrap f3" id="rw-sched">
+    <div class="req-card sched-r">
+      <div class="req-hdr">
+        <div class="req-type sched">📅 Scheduled Ride</div>
+        <span class="pill b" style="font-size:9px">3:00 PM Today</span>
+      </div>
+      <div class="sched-note">🔔 Reminder set · Trip begins in 38 minutes</div>
+      <div class="req-route">
+        <div class="rr-row"><div class="rr-dot" style="background:var(--lime)"></div>UCCSMS, Ankaful</div>
+        <div class="rr-stem"></div>
+        <div class="rr-row"><div class="rr-dot" style="background:var(--or)"></div>UCC Campus, Pedu</div>
+      </div>
+      <div class="req-pills">
+        <span class="pill gr">📏 5.6 km</span>
+        <span class="pill gr">⏱ ~18 min</span>
+        <span class="pill gr">👤 1 passenger</span>
+        <span class="pill g">GHS 12.00</span>
+        <span class="pill b">📱 MoMo</span>
+      </div>
+      <div class="req-btns">
+        <button class="btn-sm rej" onclick="rejectReq('rw-sched')">✕ Decline</button>
+        <button class="btn-sm acc" style="flex:1" onclick="acceptReq('rw-sched','Emmanuel Asante','👨🏿','UCC Campus Pedu','Scheduled','12.00','UCCSMS Ankaful','MoMo')">✓ Confirm Scheduled</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="no-req" class="estate" style="display:none">
+    <div class="e-icon">🔍</div>
+    <div class="e-ttl">No incoming requests</div>
+    <div class="e-sub">You'll be notified when riders request near you. Stay online!</div>
+  </div>
+
+  <!-- Active ride (hidden by default) -->
+  <div id="active-wrap" style="display:none">
+    <div class="active-banner">
+      <div class="mwrap ab-map">
+        <div class="mgrid" style="opacity:.3"></div>
+        <div class="mroad h" style="top:50%"></div><div class="mroad v" style="left:38%"></div>
+        <svg class="msvg" viewBox="0 0 430 120">
+          <path class="rp-bg" d="M46,100 C96,95 156,76 210,60 C264,44 330,30 390,18"/>
+          <path class="rp" id="active-rp" d="M46,100 C96,95 156,76 210,60 C264,44 330,30 390,18"/>
+        </svg>
+        <div class="mcar" id="ab-car" style="top:72%;left:7%;width:22px;height:22px;font-size:11px">🛺</div>
+        <div class="pr lime" style="width:12px;height:12px;top:78%;left:12%"></div>
+        <div class="mpin" id="ab-do-pin" style="top:10%;left:84%;display:none">
+          <div class="mpd" style="background:var(--or);width:9px;height:9px"></div>
+        </div>
+      </div>
+      <div class="ab-body">
+        <div class="ab-top">
+          <div class="ab-status"><div class="pdot"></div><span id="ab-status">En Route to Pickup</span></div>
+          <span class="pill" id="ab-type-pill">App</span>
+        </div>
+        <div class="rider-row">
+          <div class="r-av" id="ab-av">👨🏾</div>
+          <div class="r-info">
+            <div class="r-name" id="ab-name">Kwame Boateng</div>
+            <div class="r-sub" id="ab-sub">App · Pickup: UCC Main Gate</div>
+          </div>
+          <div class="r-acts">
+            <button class="r-act c" onclick="toast('📞 Calling rider...')">📞</button>
+            <button class="r-act m" id="ab-msg-btn" onclick="openChat('r1')">💬</button>
+          </div>
+        </div>
+        <div class="trip-steps">
+          <div class="ts active" id="ts-0" onclick="setStep(0)">🗺 Go pickup</div>
+          <div class="ts" id="ts-1" onclick="setStep(1)">▶ Start</div>
+          <div class="ts" id="ts-2" onclick="setStep(2)">✓ Complete</div>
+        </div>
+        <div class="ab-fare">
+          <div><div class="f-big" id="ab-fare">GHS 5.00</div><div class="f-lbl">Est. fare</div></div>
+          <div class="f-right"><div class="f-dest" id="ab-dest">Cape Coast Castle</div><div class="f-dlbl">Drop-off</div></div>
+        </div>
+      </div>
+      <div class="sos-bar" onclick="triggerSOS()">
+        <span>🚨</span><span class="sos-lbl">Emergency SOS</span>
+        <span style="margin-left:auto;font-size:10px;color:rgba(224,43,80,.5)">Hold 2s</span>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /home -->
+
+
+<!-- ██████ RIDES ██████ -->
+<div class="page" id="page-rides">
+  <div class="rtabs f0">
+    <div class="rtab active" onclick="switchRideTab(this,'up')">Upcoming</div>
+    <div class="rtab" onclick="switchRideTab(this,'past')">Past</div>
+    <div class="rtab" onclick="switchRideTab(this,'cancelled')">Cancelled</div>
+  </div>
+
+  <div id="rl-up" class="rides-list">
+    <div class="hcard f0" onclick="openRideDetail('Cape Coast Castle','5.00','0.75','App','1','MoMo')">
+      <div class="hc-top"><span class="hc-date">TODAY, 2:15 PM</span><span class="pill o">🟠 Live</span></div>
+      <div class="hc-route"><div class="hc-pt"><div class="hc-dot a"></div>UCC Main Gate</div><div class="hc-vl"></div><div class="hc-pt"><div class="hc-dot b"></div>Cape Coast Castle</div></div>
+      <div class="hc-bot"><div class="hc-rider"><div class="hc-av">👨🏾</div><div class="hc-rn">Kwame B.</div></div><div><div class="hc-fare">GHS 5.00</div><div class="hc-net">Net: GHS 4.25</div></div></div>
+    </div>
+    <div class="hcard f1" onclick="openRideDetail('UCCSMS Ankaful','12.00','1.80','Scheduled','1','MoMo')">
+      <div class="hc-top"><span class="hc-date">TODAY, 3:00 PM</span><span class="pill b">📅 Scheduled</span></div>
+      <div class="hc-route"><div class="hc-pt"><div class="hc-dot a"></div>UCCSMS, Ankaful</div><div class="hc-vl"></div><div class="hc-pt"><div class="hc-dot b"></div>UCC Campus, Pedu</div></div>
+      <div class="hc-bot"><div class="hc-rider"><div class="hc-av">👨🏿</div><div class="hc-rn">Emmanuel A.</div></div><div><div class="hc-fare">GHS 12.00</div><div class="hc-net">Net: GHS 10.20</div></div></div>
+    </div>
+  </div>
+
+  <div id="rl-past" class="rides-list" style="display:none">
+    <div class="hcard f0" onclick="openRideDetail('Teaching Hospital','10.00','1.50','USSD','2','Cash')">
+      <div class="hc-top"><span class="hc-date">TODAY, 12:40 PM</span><span class="pill g">✓ Done</span></div>
+      <div class="hc-route"><div class="hc-pt"><div class="hc-dot a"></div>Kotokuraba Market</div><div class="hc-vl"></div><div class="hc-pt"><div class="hc-dot b"></div>Teaching Hospital</div></div>
+      <div class="hc-bot"><div class="hc-rider"><div class="hc-av">📟</div><div class="hc-rn">USSD Rider</div></div><div><div class="hc-fare">GHS 10.00</div><div class="hc-net">Net: GHS 8.50</div></div></div>
+    </div>
+    <div class="hcard f1" onclick="openRideDetail('Pedu Junction','8.00','1.20','App','1','MoMo')">
+      <div class="hc-top"><span class="hc-date">TODAY, 10:05 AM</span><span class="pill g">✓ Done</span></div>
+      <div class="hc-route"><div class="hc-pt"><div class="hc-dot a"></div>Bus Terminal</div><div class="hc-vl"></div><div class="hc-pt"><div class="hc-dot b"></div>Pedu Junction</div></div>
+      <div class="hc-bot"><div class="hc-rider"><div class="hc-av">👩🏾</div><div class="hc-rn">Abena M.</div></div><div><div class="hc-fare">GHS 8.00</div><div class="hc-net">Net: GHS 6.80</div></div></div>
+    </div>
+    <div class="hcard f2" onclick="openRideDetail('UCC Main Gate','6.00','0.90','App','1','MoMo')">
+      <div class="hc-top"><span class="hc-date">YESTERDAY, 4:30 PM</span><span class="pill g">✓ Done</span></div>
+      <div class="hc-route"><div class="hc-pt"><div class="hc-dot a"></div>Abura Junction</div><div class="hc-vl"></div><div class="hc-pt"><div class="hc-dot b"></div>UCC Main Gate</div></div>
+      <div class="hc-bot"><div class="hc-rider"><div class="hc-av">👨🏾</div><div class="hc-rn">Kofi A.</div></div><div><div class="hc-fare">GHS 6.00</div><div class="hc-net">Net: GHS 5.10</div></div></div>
+    </div>
+  </div>
+
+  <div id="rl-cancelled" class="rides-list" style="display:none">
+    <div class="hcard f0" style="cursor:default;opacity:.7">
+      <div class="hc-top"><span class="hc-date">WED, 6:40 PM</span><span class="pill r">✕ Cancelled</span></div>
+      <div class="hc-route"><div class="hc-pt"><div class="hc-dot a"></div>Abura Junction</div><div class="hc-vl"></div><div class="hc-pt" style="opacity:.4"><div class="hc-dot b"></div>UCC Campus</div></div>
+      <div class="hc-bot"><div style="font-size:11px;color:var(--txt2)">Rider cancelled</div><div class="hc-fare" style="color:var(--txt3);font-size:12px">—</div></div>
+    </div>
+    <div class="estate" style="padding:24px 16px"><div class="e-icon">🚫</div><div class="e-ttl">That's all</div><div class="e-sub">Past cancellations are shown here</div></div>
+  </div>
+</div><!-- /rides -->
+
+
+<!-- ██████ WALLET ██████ -->
+<div class="page" id="page-wallet">
+
+  <!-- Wallet hero -->
+  <div class="wallet-hero f0">
+    <div class="wh-top">
+      <div class="wh-z">
+        <div class="wh-lbl">Total Wallet Balance</div>
+        <div class="wh-total">GHS 69.50</div>
+        <div class="wh-sub">Digital + Cash · Updated now</div>
+      </div>
+      <div class="wh-grid">
+        <div class="wh-cell"><div class="wh-cv">GHS 47.50</div><div class="wh-cl">📱 Digital (MoMo)</div></div>
+        <div class="wh-cell"><div class="wh-cv">GHS 22.00</div><div class="wh-cl">💵 Cash Collected</div></div>
+      </div>
+    </div>
+    <div class="wh-acts">
+      <button class="wa wd" onclick="toast('💸 Withdrawing to MTN MoMo...')">💸 Withdraw</button>
+      <button class="wa tu" onclick="openTopup()">➕ Top-Up</button>
+      <button class="wa hi" onclick="toast('📋 Full transaction history')">📋 History</button>
+    </div>
+  </div>
+
+  <!-- Commission info -->
+  <div class="comm-box f1">
+    <div class="comm-icon">📊</div>
+    <div>
+      <div class="comm-ttl">Commission: 15% (Launch Plan)</div>
+      <div class="comm-sub">GHS 7.50 deducted from today's gross. Switch to Ride Credits or Subscription to reduce or eliminate commission.</div>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stat-grid f1">
+    <div class="sg-card"><div class="sg-v">GHS 55</div><div class="sg-l">Gross today</div></div>
+    <div class="sg-card"><div class="sg-v">GHS 7.50</div><div class="sg-l">Commission</div></div>
+    <div class="sg-card"><div class="sg-v">GHS 47.50</div><div class="sg-l">Net today</div></div>
+  </div>
+  <div class="stat-grid f2">
+    <div class="sg-card"><div class="sg-v">8</div><div class="sg-l">Trips today</div></div>
+    <div class="sg-card"><div class="sg-v">GHS 318</div><div class="sg-l">This week</div></div>
+    <div class="sg-card"><div class="sg-v">GHS 1,256</div><div class="sg-l">This month</div></div>
+  </div>
+
+  <!-- Monetization plans -->
+  <div class="plan-section f3">
+    <div class="sec-h" style="padding:14px 0 10px"><div class="sec-t">Driver Plans</div><span class="sec-a" onclick="toast('ℹ️ All plans explained')">Learn more</span></div>
+    <div class="plan-cards">
+
+      <div class="plan-card active-plan" onclick="toast('✅ Commission plan is active')">
+        <div class="plan-title">🚀 Commission Plan <span class="pill o" style="font-size:9px;margin-left:4px">Current</span></div>
+        <div class="plan-sub">Pay 15% commission per completed trip. No upfront cost. Best for new drivers or low-volume use.</div>
+        <div class="plan-price">15% per ride <span>· No subscription required</span></div>
+      </div>
+
+      <div class="plan-card" onclick="openPlanUpgrade('credits')">
+        <div class="plan-title">🎟️ Ride Credits Pack</div>
+        <div class="plan-sub">Buy a prepaid pack based on estimated rides in your area. Each ride uses one credit. 0% commission per trip. Ideal for part-time drivers.</div>
+        <div class="plan-price">From GHS 15 <span>· 10 rides / 0% commission</span></div>
+      </div>
+
+      <div class="plan-card" onclick="openPlanUpgrade('sub')">
+        <div class="plan-title">⭐ Subscription Plan</div>
+        <div class="plan-sub">Unlimited rides, 0% commission, and priority ride matching. Weekly or monthly. Best for full-time drivers maximising earnings.</div>
+        <div class="plan-price">GHS 35/week <span>or</span> GHS 110/month <span>· Unlimited · 0% commission</span></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Trip earnings list -->
+  <div class="sec-h f4" style="padding:14px 16px 8px"><div class="sec-t">Recent Earnings</div><span class="sec-a" onclick="toast('📋 Full earnings history')">See all</span></div>
+  <div class="trip-earn-list f4">
+    <div class="te-row" onclick="openRideDetail('Cape Coast Castle','5.00','0.75','App','1','MoMo')">
+      <div class="te-icon">📱</div>
+      <div class="te-body"><div class="te-route">UCC Gate → Cape Coast Castle</div><div class="te-meta"><span>Today 2:15 PM</span>·<span>App</span>·<span>MoMo</span></div></div>
+      <div class="te-earn"><div class="te-gross">GHS 5.00</div><div class="te-comm">-GHS 0.75</div></div>
+    </div>
+    <div class="te-row" onclick="openRideDetail('Teaching Hospital','10.00','1.50','USSD','2','Cash')">
+      <div class="te-icon">📟</div>
+      <div class="te-body"><div class="te-route">Kotokuraba → Teaching Hospital</div><div class="te-meta"><span>Today 12:40 PM</span>·<span class="pill u" style="font-size:9px;padding:1px 5px">USSD</span>·<span>Cash</span></div></div>
+      <div class="te-earn"><div class="te-gross">GHS 10.00</div><div class="te-comm">-GHS 1.50</div></div>
+    </div>
+    <div class="te-row" onclick="openRideDetail('Pedu Junction','8.00','1.20','App','1','MoMo')">
+      <div class="te-icon">📱</div>
+      <div class="te-body"><div class="te-route">Bus Terminal → Pedu Junction</div><div class="te-meta"><span>Today 10:05 AM</span>·<span>App</span>·<span>MoMo</span></div></div>
+      <div class="te-earn"><div class="te-gross">GHS 8.00</div><div class="te-comm">-GHS 1.20</div></div>
+    </div>
+    <div class="te-row" onclick="openRideDetail('UCC Main Gate','6.00','0.90','App','1','MoMo')">
+      <div class="te-icon">📱</div>
+      <div class="te-body"><div class="te-route">Abura Junction → UCC Main Gate</div><div class="te-meta"><span>Yesterday 4:30 PM</span>·<span>App</span>·<span>MoMo</span></div></div>
+      <div class="te-earn"><div class="te-gross">GHS 6.00</div><div class="te-comm">-GHS 0.90</div></div>
+    </div>
+    <div class="te-row" onclick="openRideDetail('UCC Main Gate','12.00','0','Subscription','1','MoMo')">
+      <div class="te-icon">⭐</div>
+      <div class="te-body"><div class="te-route">UCCSMS Ankaful → UCC Main Gate</div><div class="te-meta"><span>Mon 8:10 AM</span>·<span>App</span>·<span class="pill g" style="font-size:9px;padding:1px 5px">Sub</span></div></div>
+      <div class="te-earn"><div class="te-gross">GHS 12.00</div><div class="te-comm" style="color:var(--lime2)">0% commission</div></div>
+    </div>
+  </div>
+
+</div><!-- /wallet -->
+
+
+<!-- ██████ MESSAGES ██████ -->
+<div class="page" id="page-messages">
+  <div class="sec-h f0"><div class="sec-t">Messages</div><div style="font-family:var(--fm);font-size:9px;color:var(--txt2)">Active rides only</div></div>
+  <div class="msg-list">
+    <div class="ccard f0" onclick="openChat('r1')">
+      <div class="cav">👨🏾<div class="cavst on"></div></div>
+      <div class="cbody"><div class="c-name">Kwame Boateng</div><div class="c-last">I'm at the gate, blue backpack 👋</div></div>
+      <div class="cmeta"><div class="ctime">1m ago</div><div class="cunread">1</div></div>
+    </div>
+    <div class="ccard locked f1" onclick="toast('🔒 Ride completed — chat closed')">
+      <div class="cav">👩🏾<div class="cavst off"></div></div>
+      <div class="cbody"><div class="c-name">Abena Mensah</div><div class="c-last" style="text-decoration:line-through;opacity:.4">Thank you! 5 stars ⭐</div><div class="c-note">🔒 Ride completed · chat closed</div></div>
+      <div class="cmeta"><div class="ctime">Yesterday</div><span class="pill gr" style="font-size:9px;padding:2px 6px">Closed</span></div>
+    </div>
+    <div class="ccard locked f2" onclick="toast('📟 USSD riders — no in-app chat')">
+      <div class="cav">📟<div class="cavst off"></div></div>
+      <div class="cbody"><div class="c-name">USSD Rider (*711#)</div><div class="c-last" style="opacity:.4">USSD riders have no in-app chat</div><div class="c-note">📟 USSD booking — call only</div></div>
+      <div class="cmeta"><div class="ctime">Wed</div><span class="pill u" style="font-size:9px;padding:2px 6px">USSD</span></div>
+    </div>
+    <div class="info-box f3"><span style="font-size:16px;flex-shrink:0">ℹ️</span><p>Messaging is available only during <strong>active rides</strong>. USSD riders have no in-app chat — use phone call only. Chats close automatically when trips end.</p></div>
+  </div>
+</div><!-- /messages -->
+
+
+<!-- ██████ ACCOUNT ██████ -->
+<div class="page" id="page-account">
+  <!-- Hero -->
+  <div class="achero f0">
+    <div class="acav">🧑🏾</div>
+    <div>
+      <div class="ac-name">Kofi Mensah</div>
+      <div class="ac-id">DRV-GH-2024-0348</div>
+      <div class="ac-pills">
+        <span class="pill g">✓ KYC Verified</span>
+        <span class="pill o">🛺 Tricycle</span>
+        <span class="pill b">CR-2341-18</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="acstats f1">
+    <div class="acstat"><div class="as-v">187</div><div class="as-l">Trips</div></div>
+    <div class="acstat"><div class="as-v">4.9⭐</div><div class="as-l">Rating</div></div>
+    <div class="acstat"><div class="as-v">GHS 1,256</div><div class="as-l">This Month</div></div>
+  </div>
+
+  <!-- Favourites -->
+  <div class="mgroup f1">
+    <div class="mglbl">Favourites</div>
+    <div class="fav-block">
+      <div class="fav-hdr">
+        <span style="font-size:12px;font-weight:600;color:var(--txt)">Quick Access</span>
+        <div class="fav-tabs">
+          <div class="ft active" id="ft-r" onclick="switchFav('r')">👤 Riders</div>
+          <div class="ft" id="ft-l" onclick="switchFav('l')">📍 Places</div>
+        </div>
+      </div>
+      <div class="fav-scroll" id="fs-r">
+        <div class="fc" onclick="toast('👤 Kwame Boateng — frequent rider')"><div class="fc-ico">👨🏾</div><div class="fc-lbl">Kwame B.</div></div>
+        <div class="fc" onclick="toast('👤 Abena Mensah — frequent rider')"><div class="fc-ico">👩🏾</div><div class="fc-lbl">Abena M.</div></div>
+        <div class="fc" onclick="toast('👤 Emmanuel Asante')"><div class="fc-ico">👨🏿</div><div class="fc-lbl">Emmanuel</div></div>
+        <div class="fc" onclick="openAddFav('rider')"><div class="fc-ico" style="border:1.5px dashed var(--brd-l)">➕</div><div class="fc-lbl" style="color:var(--lime2)">Add</div></div>
+      </div>
+      <div class="fav-scroll" id="fs-l" style="display:none">
+        <div class="fc" onclick="toast('📍 UCC Gate — frequent pickup')"><div class="fc-ico">🎓</div><div class="fc-lbl">UCC Gate</div></div>
+        <div class="fc" onclick="toast('📍 Kotokuraba Market')"><div class="fc-ico">🛒</div><div class="fc-lbl">Kotokuraba</div></div>
+        <div class="fc" onclick="toast('📍 Bus Terminal')"><div class="fc-ico">🚌</div><div class="fc-lbl">Bus Terminal</div></div>
+        <div class="fc" onclick="openAddFav('location')"><div class="fc-ico" style="border:1.5px dashed var(--brd-l)">➕</div><div class="fc-lbl" style="color:var(--lime2)">Add</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Vehicle & KYC -->
+  <div class="mgroup f2">
+    <div class="mglbl">Vehicle & KYC</div>
+    <div class="mlist">
+      <div class="mitem" onclick="toast('🛺 Tricycle · CR-2341-18')"><div class="miico">🛺</div><div class="mibody"><div class="mi-lbl">My Vehicle</div><div class="mi-sub">Tricycle · CR-2341-18 · 2018</div></div><div class="miright"><div class="mi-arr">›</div></div></div>
+      <div class="mitem" onclick="toast('🆔 Ghana Card verified ✓')"><div class="miico">🆔</div><div class="mibody"><div class="mi-lbl">Identity & KYC</div><div class="mi-sub">Ghana Card · Verified</div></div><div class="miright"><div class="mi-v" style="color:var(--lime2)">✓</div><div class="mi-arr">›</div></div></div>
+      <div class="mitem" onclick="toast('📋 Driver\'s license valid')"><div class="miico">📋</div><div class="mibody"><div class="mi-lbl">Driver's License</div><div class="mi-sub">Valid until Dec 2026</div></div><div class="miright"><div class="mi-v" style="color:var(--lime2)">✓</div><div class="mi-arr">›</div></div></div>
+      <div class="mitem" onclick="toast('🏅 Road-worthy · 2024')"><div class="miico">🏅</div><div class="mibody"><div class="mi-lbl">Road Worthiness</div><div class="mi-sub">Certificate · Valid 2024</div></div><div class="miright"><div class="mi-arr">›</div></div></div>
+    </div>
+  </div>
+
+  <!-- Payments -->
+  <div class="mgroup f2">
+    <div class="mglbl">Payments & Wallet</div>
+    <div class="mlist">
+      <div class="mitem" onclick="toast('📱 MTN MoMo linked')"><div class="miico">📱</div><div class="mibody"><div class="mi-lbl">MTN MoMo</div><div class="mi-sub">+233 24 *** 7890 · Default</div></div><div class="miright"><div class="mi-v">Default</div><div class="mi-arr">›</div></div></div>
+      <div class="mitem" onclick="openTopup()"><div class="miico">➕</div><div class="mibody"><div class="mi-lbl">Top-Up / Buy Credits</div><div class="mi-sub">Prepay commission or ride packs</div></div><div class="miright"><div class="mi-arr">›</div></div></div>
+      <div class="mitem"><div class="miico">💵</div><div class="mibody"><div class="mi-lbl">Accept Cash Rides</div><div class="mi-sub">Including USSD bookings</div></div><div class="miright"><button class="tog on" onclick="event.stopPropagation();this.classList.toggle('on');this.classList.toggle('off');toast('💵 Cash setting updated')"></button></div></div>
+      <div class="mitem"><div class="miico">📟</div><div class="mibody"><div class="mi-lbl">USSD Ride Requests</div><div class="mi-sub">Accept *711# bookings</div></div><div class="miright"><button class="tog on" onclick="event.stopPropagation();this.classList.toggle('on');this.classList.toggle('off');toast('📟 USSD setting updated')"></button></div></div>
+    </div>
+  </div>
+
+  <!-- Security -->
+  <div class="mgroup f3">
+    <div class="mglbl">Security</div>
+    <div class="mlist">
+      <div class="mitem" onclick="toast('🔒 Change password')"><div class="miico">🔒</div><div class="mibody"><div class="mi-lbl">Change Password</div><div class="mi-sub">Last changed 2 months ago</div></div><div class="miright"><div class="mi-arr">›</div></div></div>
+      <div class="mitem"><div class="miico">🛡️</div><div class="mibody"><div class="mi-lbl">Two-Factor Auth</div><div class="mi-sub">SMS verification</div></div><div class="miright"><button class="tog on" onclick="event.stopPropagation();this.classList.toggle('on');this.classList.toggle('off');toast('🛡️ 2FA updated')"></button></div></div>
+      <div class="mitem" onclick="toast('📱 1 device linked')"><div class="miico">📱</div><div class="mibody"><div class="mi-lbl">Trusted Devices</div><div class="mi-sub">1 device linked</div></div><div class="miright"><div class="mi-arr">›</div></div></div>
+      <div class="mitem" onclick="toast('👁️ View recent sessions')"><div class="miico">👁️</div><div class="mibody"><div class="mi-lbl">Login Activity</div></div><div class="miright"><div class="mi-arr">›</div></div></div>
+    </div>
+  </div>
+
+  <!-- Safety -->
+  <div class="mgroup f3">
+    <div class="mglbl">Safety</div>
+    <div class="mlist">
+      <div class="mitem" onclick="triggerSOS()"><div class="miico">🚨</div><div class="mibody"><div class="mi-lbl">Emergency SOS</div><div class="mi-sub">Tap to test or configure</div></div><div class="miright"><div class="mi-arr">›</div></div></div>
+      <div class="mitem"><div class="miico">⚡</div><div class="mibody"><div class="mi-lbl">Panic Button</div><div class="mi-sub">Shake or hold power button</div></div><div class="miright"><button class="tog on" onclick="event.stopPropagation();this.classList.toggle('on');this.classList.toggle('off');toast('⚡ Panic button updated')"></button></div></div>
+      <div class="mitem" onclick="toast('👥 2 contacts saved')"><div class="miico">👥</div><div class="mibody"><div class="mi-lbl">Emergency Contacts</div><div class="mi-sub">2 contacts saved</div></div><div class="miright"><div class="mi-arr">›</div></div></div>
+      <div class="mitem"><div class="miico">📍</div><div class="mibody"><div class="mi-lbl">Share Live Location</div><div class="mi-sub">Qiilu & emergency contacts</div></div><div class="miright"><button class="tog on" onclick="event.stopPropagation();this.classList.toggle('on');this.classList.toggle('off');toast('📍 Location sharing updated')"></button></div></div>
+      <div class="mitem"><div class="miico">🎙️</div><div class="mibody"><div class="mi-lbl">Trip Audio Recording</div><div class="mi-sub">Auto-record for safety</div></div><div class="miright"><button class="tog off" onclick="event.stopPropagation();this.classList.toggle('on');this.classList.toggle('off');toast('🎙️ Recording updated')"></button></div></div>
+    </div>
+  </div>
+
+  <!-- Preferences -->
+  <div class="mgroup f4">
+    <div class="mglbl">Preferences</div>
+    <div class="mlist">
+      <div class="mitem">
+        <div class="miico">🌗</div>
+        <div class="mibody"><div class="mi-lbl">Dark Mode</div><div class="mi-sub" id="theme-sub">Currently: Light</div></div>
+        <div class="miright">
+          <span style="font-size:12px">☀️</span>
+          <button class="tog off" id="theme-tog" onclick="event.stopPropagation();toggleTheme(this)"></button>
+          <span style="font-size:12px">🌙</span>
+        </div>
+      </div>
+      <div class="mitem"><div class="miico">🔔</div><div class="mibody"><div class="mi-lbl">Push Notifications</div></div><div class="miright"><button class="tog on" onclick="event.stopPropagation();this.classList.toggle('on');this.classList.toggle('off')"></button></div></div>
+      <div class="mitem"><div class="miico">📟</div><div class="mibody"><div class="mi-lbl">USSD Request Alerts</div><div class="mi-sub">Vibrate & sound for USSD rides</div></div><div class="miright"><button class="tog on" onclick="event.stopPropagation();this.classList.toggle('on');this.classList.toggle('off')"></button></div></div>
+      <div class="mitem" onclick="toast('🌍 Language: English (GH)')"><div class="miico">🌍</div><div class="mibody"><div class="mi-lbl">Language</div></div><div class="miright"><div class="mi-v">EN · GH</div><div class="mi-arr">›</div></div></div>
+    </div>
+  </div>
+
+  <!-- Promotions -->
+  <div class="mgroup f4">
+    <div class="mglbl">Promotions & Rewards</div>
+    <div class="mlist">
+      <div class="mitem" onclick="toast('🎁 1 active driver bonus')"><div class="miico">🎁</div><div class="mibody"><div class="mi-lbl">Driver Promotions</div><div class="mi-sub">1 active bonus this week</div></div><div class="miright"><div class="mi-v" style="color:var(--lime2)">Active</div><div class="mi-arr">›</div></div></div>
+      <div class="mitem" onclick="openRefer()"><div class="miico">🤝</div><div class="mibody"><div class="mi-lbl">Refer a Driver</div><div class="mi-sub">Earn GHS 10 per referral</div></div><div class="miright"><span class="pill g" style="font-size:9px">Earn</span><div class="mi-arr">›</div></div></div>
+    </div>
+  </div>
+
+  <!-- Legal -->
+  <div class="mgroup f4">
+    <div class="mglbl">Support & Legal</div>
+    <div class="mlist">
+      <div class="mitem" onclick="toast('💬 Opening support...')"><div class="miico">💬</div><div class="mibody"><div class="mi-lbl">Help & Support</div><div class="mi-sub">Chat, call or email Qiilu</div></div><div class="miright"><div class="mi-arr">›</div></div></div>
+      <div class="mitem" onclick="openLegal('Privacy Policy')"><div class="miico">🔐</div><div class="mibody"><div class="mi-lbl">Privacy Policy</div></div><div class="miright"><div class="mi-arr">›</div></div></div>
+      <div class="mitem" onclick="openLegal('Terms of Service')"><div class="miico">📄</div><div class="mibody"><div class="mi-lbl">Terms of Service</div></div><div class="miright"><div class="mi-arr">›</div></div></div>
+      <div class="mitem" onclick="openLegal('Driver Code of Conduct')"><div class="miico">🤝</div><div class="mibody"><div class="mi-lbl">Driver Code of Conduct</div></div><div class="miright"><div class="mi-arr">›</div></div></div>
+      <div class="mitem" onclick="toast('ℹ️ Qiilu Driver v1.0.4')"><div class="miico">ℹ️</div><div class="mibody"><div class="mi-lbl">About Qiilu Driver</div><div class="mi-sub">Version 1.0.4 · Cape Coast, GH</div></div><div class="miright"><div class="mi-arr">›</div></div></div>
+    </div>
+  </div>
+
+  <button class="logout-btn f5" onclick="toast('👋 Logged out. Drive safe!')">🚪 Log Out</button>
+</div><!-- /account -->
+
+</div><!-- /pages -->
+
+<!-- ═══ BOTTOM NAV ═══ -->
+<div id="nav">
+  <button class="nb active" id="nav-home" onclick="go('home',this)">
+    <div class="nb-line"></div>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+    <div class="nb-l">Requests</div>
+  </button>
+  <button class="nb" id="nav-rides" onclick="go('rides',this)">
+    <div class="nb-line"></div>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+    <div class="nb-l">Rides</div>
+  </button>
+  <button class="nb" id="nav-wallet" onclick="go('wallet',this)">
+    <div class="nb-line"></div>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+    <div class="nb-l">Wallet</div>
+  </button>
+  <button class="nb" id="nav-messages" onclick="go('messages',this)">
+    <div class="nb-line"></div>
+    <div class="n-badge on" id="msg-badge">1</div>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+    <div class="nb-l">Messages</div>
+  </button>
+  <button class="nb" id="nav-account" onclick="go('account',this)">
+    <div class="nb-line"></div>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+    <div class="nb-l">Account</div>
+  </button>
+</div>
+
+<!-- ═══ CHAT VIEW ═══ -->
+<div id="chatview">
+  <div class="chattop">
+    <div class="chatback" onclick="closeChat()">←</div>
+    <div class="chatav" id="chat-av">👨🏾</div>
+    <div style="flex:1;min-width:0">
+      <div class="chat-name" id="chat-name">Kwame Boateng</div>
+      <div class="chat-sub" id="chat-sub">Rider · Active Trip</div>
+    </div>
+    <div class="tbtn" onclick="toast('📞 Calling rider...')">📞</div>
+  </div>
+  <div id="chat-body" style="flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden"></div>
+  <div id="chat-footer"></div>
+</div>
+
+<!-- ═══ MODAL ═══ -->
+<div id="moverlay" onclick="closeModal(event)">
+  <div class="msheet">
+    <div class="mhandle"><div class="mhbar"></div></div>
+    <div class="mbody" id="mbody"></div>
+  </div>
+</div>
+
+<!-- ═══ TOAST ═══ -->
+<div id="toast"></div>
+
+</div><!-- /app -->
+
+<script>
+/* ════ STATE ════ */
+let curPage='home', isOnline=true, isDark=false, activeChat=null, tripStep=0;
+let timers={};
+
+const convos={
+  r1:{name:'Kwame Boateng',av:'👨🏾',sub:'Rider · Active Trip',status:'active',
+    msgs:[{from:'them',text:"I'm at the UCC main gate. Blue backpack 👋",time:'2:12 PM'}]},
+  r2:{name:'Abena Mensah',av:'👩🏾',sub:'Rider · Completed',status:'completed',
+    msgs:[{from:'them',text:'Thanks for the smooth ride! 5 stars ⭐',time:'10:55 AM'}]}
+};
+
+/* ── THEME ── */
+function toggleTheme(b){
+  isDark=!isDark;
+  document.documentElement.setAttribute('data-theme',isDark?'dark':'light');
+  b.classList.toggle('on',isDark);b.classList.toggle('off',!isDark);
+  document.getElementById('theme-sub').textContent='Currently: '+(isDark?'Dark':'Light');
+  toast(isDark?'🌙 Dark mode on':'☀️ Light mode on');
+}
+
+/* ── ONLINE/OFFLINE ── */
+function toggleOnline(){
+  isOnline=!isOnline;
+  const sp=document.getElementById('spill'),ld=document.getElementById('ldot'),st=document.getElementById('stext'),mm=document.getElementById('map-mode'),oc=document.getElementById('offline-cta');
+  if(isOnline){
+    sp.className='spill on';ld.className='ldot on';st.textContent='Online';mm.textContent='🟢 Available';oc.style.display='none';
+    toast('🟢 Online! Accepting requests.');
+  }else{
+    sp.className='spill off';ld.className='ldot off';st.textContent='Offline';mm.textContent='⚫ Offline';oc.style.display='flex';
+    toast('⚫ Gone offline.');
+  }
+}
+
+/* ── NAV ── */
+function go(page,btn){
+  if(page===curPage)return;
+  const old=document.getElementById('page-'+curPage);
+  old.classList.remove('active');old.classList.add('leaving');
+  setTimeout(()=>old.classList.remove('leaving'),240);
+  const next=document.getElementById('page-'+page);
+  next.classList.add('active');
+  next.querySelectorAll('.f0,.f1,.f2,.f3,.f4,.f5,.f6').forEach(el=>{el.style.animation='none';void el.offsetHeight;el.style.animation='';});
+  document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  if(page==='messages')document.getElementById('msg-badge').classList.remove('on');
+  curPage=page;
+}
+
+/* ── ACCEPT / REJECT ── */
+function acceptReq(wrapId,riderName,riderAv,dest,type,fare,pickup,payment){
+  const w=document.getElementById(wrapId);
+  if(w){w.style.transition='opacity .22s,transform .22s';w.style.opacity='0';w.style.transform='scale(.97)';setTimeout(()=>{w.style.display='none';checkEmpty();},230);}
+
+  /* Show active ride */
+  document.getElementById('active-wrap').style.display='block';
+  document.getElementById('home-svg').style.display='block';
+  document.getElementById('pu-pin').style.display='flex';
+  document.getElementById('do-pin').style.display='flex';
+  document.getElementById('pu-pulse').style.display='block';
+  document.getElementById('ab-do-pin').style.display='flex';
+  document.getElementById('pu-lbl').textContent=pickup;
+  document.getElementById('do-lbl').textContent=dest;
+  document.getElementById('ab-av').textContent=riderAv;
+  document.getElementById('ab-name').textContent=riderName;
+  document.getElementById('ab-sub').textContent=type+' · Pickup: '+pickup;
+  document.getElementById('ab-fare').textContent='GHS '+fare;
+  document.getElementById('ab-dest').textContent=dest;
+  const tp=document.getElementById('ab-type-pill');
+  if(type==='USSD'){tp.className='pill u';tp.textContent='📟 USSD';}
+  else if(type==='Scheduled'){tp.className='pill b';tp.textContent='📅 Scheduled';}
+  else{tp.className='pill o';tp.textContent='📱 App';}
+  /* Disable chat for USSD */
+  const msgBtn=document.getElementById('ab-msg-btn');
+  if(type==='USSD'){msgBtn.onclick=()=>toast('📟 USSD rider — call only');msgBtn.style.opacity='.45';}
+  else{msgBtn.onclick=()=>openChat('r1');msgBtn.style.opacity='1';}
+  resetSteps();
+  toast('✅ Ride accepted! Head to pickup.');
+  setTimeout(()=>document.getElementById('active-wrap').scrollIntoView({behavior:'smooth',block:'nearest'}),300);
+}
+
+function rejectReq(wrapId){
+  const w=document.getElementById(wrapId);
+  if(w){w.style.transition='opacity .22s,transform .22s';w.style.opacity='0';w.style.transform='translateX(-12px)';setTimeout(()=>{w.style.display='none';checkEmpty();},230);}
+  toast('✕ Request declined');
+}
+
+function checkEmpty(){
+  const ids=['rw-app','rw-ussd','rw-sched'];
+  const allGone=ids.every(id=>{const el=document.getElementById(id);return !el||el.style.display==='none';});
+  if(allGone){document.getElementById('no-req').style.display='flex';document.getElementById('req-ct').textContent='0 requests';document.getElementById('req-ct').className='pill gr';}
+}
+
+/* ── TRIP STEPS ── */
+function setStep(idx){
+  tripStep=idx;
+  const labels=['En Route to Pickup','Trip In Progress','Trip Completed'];
+  for(let i=0;i<3;i++){
+    const el=document.getElementById('ts-'+i);
+    el.className='ts'+(i<idx?' done':i===idx?' active':'');
+  }
+  document.getElementById('ab-status').textContent=labels[idx];
+  if(idx===2)setTimeout(openTripSummary,400);
+  else toast(idx===1?'▶ Trip started!':'🗺 En route to pickup...');
+}
+function resetSteps(){for(let i=0;i<3;i++)document.getElementById('ts-'+i).className='ts'+(i===0?' active':'');document.getElementById('ab-status').textContent='En Route to Pickup';tripStep=0;}
+
+function openTripSummary(){
+  const fare=parseFloat(document.getElementById('ab-fare').textContent.replace('GHS ',''));
+  const comm=(fare*0.15).toFixed(2);
+  const net=(fare-parseFloat(comm)).toFixed(2);
+  const dest=document.getElementById('ab-dest').textContent;
+  showModal(`
+    <div class="m-ttl">Trip Completed! 🎉</div>
+    <div class="m-sub">Great work, Kofi. Earnings added to wallet.</div>
+    <div style="background:var(--bg3);border-radius:var(--r);padding:14px;margin-bottom:14px">
+      <div class="rcrow"><div class="rcrdot" style="background:var(--lime)"></div><span>Pickup location</span></div>
+      <div class="rcrstem"></div>
+      <div class="rcrow"><div class="rcrdot" style="background:var(--or)"></div><span>${dest}</span></div>
+    </div>
+    <div class="fbrow"><span>Gross fare</span><span>GHS ${fare.toFixed(2)}</span></div>
+    <div class="fbrow"><span>Commission (15%)</span><span style="color:var(--red)">-GHS ${comm}</span></div>
+    <div class="fbrow"><span>Your net earnings</span><span>GHS ${net}</span></div>
+    <button class="btn-p lime" style="margin-top:16px" onclick="endTrip()">✓ Done — Ready for Next Ride</button>
+    <div style="text-align:center;margin-top:10px;font-size:11px;color:var(--txt2);cursor:pointer" onclick="toast('⭐ Rate rider')">Rate this rider ›</div>
+  `);
+}
+
+function endTrip(){
+  closeModal();
+  document.getElementById('active-wrap').style.display='none';
+  document.getElementById('home-svg').style.display='none';
+  document.getElementById('pu-pin').style.display='none';
+  document.getElementById('do-pin').style.display='none';
+  document.getElementById('pu-pulse').style.display='none';
+  toast('✅ Trip saved. Wallet updated!');
+  /* Re-show requests for demo */
+  ['rw-app','rw-ussd','rw-sched'].forEach(id=>{const e=document.getElementById(id);if(e){e.style.display='block';e.style.opacity='1';e.style.transform='';e.style.transition='';}});
+  document.getElementById('no-req').style.display='none';
+  document.getElementById('req-ct').textContent='2 new';document.getElementById('req-ct').className='pill o';
+}
+
+/* ── RIDE DETAIL MODAL ── */
+function openRideDetail(dest,gross,comm,type,pax,payment){
+  const net=(parseFloat(gross)-parseFloat(comm)).toFixed(2);
+  showModal(`
+    <div class="m-ttl">Trip Details</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
+      <span class="${type==='USSD'?'pill u':type==='Scheduled'?'pill b':'pill o'}">${type==='USSD'?'📟 USSD':type==='Scheduled'?'📅 Scheduled':'📱 App'}</span>
+      <span class="pill gr">👤 ${pax} passenger${pax>1?'s':''}</span>
+      <span class="pill gr">${payment==='Cash'?'💵 Cash':'📱 MoMo'}</span>
+    </div>
+    <div style="background:var(--bg3);border-radius:var(--r);padding:14px;margin-bottom:14px">
+      <div class="rcrow"><div class="rcrdot" style="background:var(--lime)"></div><span>Pickup location</span></div>
+      <div class="rcrstem"></div>
+      <div class="rcrow"><div class="rcrdot" style="background:var(--or)"></div><span>${dest}</span></div>
+    </div>
+    <div class="fbrow"><span>Gross fare</span><span>GHS ${gross}</span></div>
+    <div class="fbrow"><span>Commission</span><span style="color:${comm==='0'?'var(--lime2)':'var(--red)'}">
+      ${comm==='0'?'GHS 0.00 (Subscription)':'-GHS '+comm}</span></div>
+    <div class="fbrow"><span>Net earned</span><span>GHS ${net}</span></div>
+    <button class="btn-o" style="margin-top:14px" onclick="closeModal()">Close</button>
+  `);
+}
+
+/* ── RIDES TAB ── */
+function switchRideTab(tab,type){
+  document.querySelectorAll('.rtab').forEach(t=>t.classList.remove('active'));
+  tab.classList.add('active');
+  ['up','past','cancelled'].forEach(t=>{const e=document.getElementById('rl-'+t);if(e)e.style.display=t===type?'flex':'none';});
+}
+
+/* ── WALLET / TOP-UP ── */
+function openTopup(){
+  showModal(`
+    <div class="m-ttl">Top-Up Wallet</div>
+    <div class="m-sub">Fund your wallet to cover commission debt, or purchase a ride credit pack.</div>
+    <div style="font-family:var(--fm);font-size:10px;color:var(--txt2);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">Quick amounts</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
+      ${['5','10','20','50','100','200'].map(a=>`<button onclick="pickTopup(this,'${a}')" style="padding:12px 6px;border-radius:var(--r2);border:1.5px solid var(--brd);background:var(--bg3);font-family:var(--fd);font-size:13px;font-weight:700;color:var(--txt);cursor:pointer;transition:all .15s" class="tu-btn">GHS ${a}</button>`).join('')}
+    </div>
+    <input class="fldinput" id="tu-custom" type="number" min="5" placeholder="Custom amount (min. GHS 5)"/>
+    <div style="font-size:11px;color:var(--txt2);margin-bottom:16px">📱 Via MTN MoMo · +233 24 *** 7890</div>
+    <button class="btn-p lime" onclick="doTopup()">➕ Top Up Now</button>
+  `);
+}
+let tuAmount='10';
+function pickTopup(b,a){document.querySelectorAll('.tu-btn').forEach(x=>{x.style.borderColor='var(--brd)';x.style.background='var(--bg3)';x.style.color='var(--txt)'});b.style.borderColor='var(--lime)';b.style.background='var(--lime-a)';b.style.color='var(--lime2)';tuAmount=a;}
+function doTopup(){const c=document.getElementById('tu-custom')?.value;const a=c||tuAmount;closeModal();toast('✅ GHS '+a+' topped up via MoMo!');}
+
+/* ── PLAN UPGRADE MODAL ── */
+function openPlanUpgrade(type){
+  const plans={
+    credits:{title:'🎟️ Ride Credits Pack',sub:'Buy a prepaid pack. Each completed ride deducts one credit. 0% commission while credits last. Ideal for part-time drivers.',options:['10 rides — GHS 15','20 rides — GHS 28','50 rides — GHS 60','100 rides — GHS 110']},
+    sub:{title:'⭐ Subscription Plan',sub:'Unlimited rides, 0% commission, and priority matching. No per-ride charge.',options:['Weekly — GHS 35/week','Monthly — GHS 110/month']}
+  };
+  const p=plans[type];
+  showModal(`
+    <div class="m-ttl">${p.title}</div>
+    <div class="m-sub">${p.sub}</div>
+    ${p.options.map((o,i)=>`
+      <div onclick="selectPlan(this)" style="padding:13px;background:var(--bg3);border:1.5px solid var(--brd);border-radius:var(--r2);margin-bottom:8px;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:space-between;font-family:var(--fd);font-size:13px;font-weight:700;color:var(--txt)" class="plan-opt">
+        ${o}<div style="width:18px;height:18px;border-radius:50%;border:2px solid var(--brd);transition:all .15s" class="plan-radio"></div>
+      </div>
+    `).join('')}
+    <button class="btn-p lime" style="margin-top:6px" onclick="confirmPlan('${type}')">Subscribe Now</button>
+    <button class="btn-o" style="margin-top:8px" onclick="closeModal()">Maybe Later</button>
+  `);
+}
+function selectPlan(el){document.querySelectorAll('.plan-opt').forEach(x=>{x.style.borderColor='var(--brd)';x.style.background='var(--bg3)';x.querySelector('.plan-radio').style.borderColor='var(--brd)';x.querySelector('.plan-radio').style.background='transparent'});el.style.borderColor='var(--lime)';el.style.background='var(--lime-a)';el.querySelector('.plan-radio').style.borderColor='var(--lime)';el.querySelector('.plan-radio').style.background='var(--lime)';}
+function confirmPlan(t){closeModal();toast(t==='credits'?'🎟️ Ride credits activated!':'⭐ Subscription activated! 0% commission now.');}
+
+/* ── SOS ── */
+function triggerSOS(){
+  showModal(`
+    <div style="text-align:center;padding:14px 0">
+      <div style="width:70px;height:70px;background:var(--red);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 16px;animation:sosAnim 1.5s infinite">🚨</div>
+      <div style="font-family:var(--fd);font-size:20px;font-weight:800;color:var(--red);margin-bottom:7px">Emergency SOS</div>
+      <div style="font-size:12px;color:var(--txt2);line-height:1.7;margin-bottom:20px">Instantly alerts the Qiilu response team, your emergency contacts, and Ghana Police with your live GPS location.</div>
+      <button class="btn-p red" style="margin-bottom:9px" onclick="sendSOS()">🚨 Send SOS Now</button>
+      <button class="btn-o" onclick="closeModal()">Cancel — I'm Safe</button>
+    </div>
+  `);
+}
+function sendSOS(){closeModal();toast('🚨 SOS sent! Help is on the way.');}
+
+/* ── NOTIFICATIONS ── */
+function openNotif(){
+  showModal(`
+    <div class="m-ttl">Notifications</div>
+    <div class="nitem"><div class="niw ride">📱</div><div class="ntxt"><div class="nttl">New app request</div><div class="nbdy">Kwame Boateng: UCC Gate → Cape Coast Castle · GHS 5.00</div><div class="ntim">Just now</div></div><div class="nudot"></div></div>
+    <div class="nitem"><div class="niw ussd">📟</div><div class="ntxt"><div class="nttl">USSD ride request</div><div class="nbdy">*711# booking · Kotokuraba → Teaching Hospital · GHS 10.00 · Cash</div><div class="ntim">2 mins ago</div></div><div class="nudot"></div></div>
+    <div class="nitem"><div class="niw promo">📅</div><div class="ntxt"><div class="nttl">Scheduled ride reminder</div><div class="nbdy">Emmanuel Asante: UCCSMS → UCC Pedu · 3:00 PM today · GHS 12.00</div><div class="ntim">38 mins</div></div><div class="nudot"></div></div>
+    <div class="nitem"><div class="niw promo">🎁</div><div class="ntxt"><div class="nttl">Driver bonus active!</div><div class="nbdy">Complete 10 trips before 10 PM for an extra GHS 15 bonus today.</div><div class="ntim">1 hour ago</div></div><div class="nudot"></div></div>
+    <div class="nitem"><div class="niw alert">🚨</div><div class="ntxt"><div class="nttl">Safety reminder</div><div class="nbdy">Always verify rider name and confirm route before starting a trip.</div><div class="ntim">Yesterday</div></div></div>
+  `);
+}
+
+/* ── REFER ── */
+function openRefer(){
+  showModal(`
+    <div class="m-ttl">Refer a Driver & Earn</div>
+    <div class="m-sub">Share your code. Earn GHS 10 when your referred driver completes their first 5 trips.</div>
+    <div style="background:linear-gradient(135deg,rgba(245,93,0,.08),rgba(107,184,39,.08));border:1px solid var(--brd);border-radius:var(--r2);padding:16px;text-align:center;margin-bottom:16px">
+      <div style="font-size:12px;color:var(--txt2);margin-bottom:4px">Your driver referral code</div>
+      <div style="font-family:var(--fm);font-size:20px;font-weight:700;color:var(--or);letter-spacing:3px;padding:10px 20px;background:rgba(245,93,0,.1);border:1.5px dashed rgba(245,93,0,.35);border-radius:var(--r2);display:inline-block">KOFI-D348</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">
+      <div style="background:var(--bg3);border-radius:var(--r2);padding:12px;text-align:center;border:1px solid var(--brd)"><div style="font-family:var(--fd);font-size:20px;font-weight:800;color:var(--lime2)">2</div><div style="font-size:10px;color:var(--txt2);margin-top:2px">Drivers referred</div></div>
+      <div style="background:var(--bg3);border-radius:var(--r2);padding:12px;text-align:center;border:1px solid var(--brd)"><div style="font-family:var(--fd);font-size:20px;font-weight:800;color:var(--lime2)">GHS 20</div><div style="font-size:10px;color:var(--txt2);margin-top:2px">Total earned</div></div>
+    </div>
+    <button class="btn-p lime" onclick="toast('📋 Code copied: KOFI-D348');closeModal()">📋 Copy & Share Code</button>
+  `);
+}
+
+/* ── LEGAL ── */
+function openLegal(t){
+  const c={'Privacy Policy':'Qiilu collects your location, trip data, and payment information to operate the platform. Your data is never sold to third parties. All data is encrypted and stored on secure servers in Ghana.','Terms of Service':'Drivers must maintain a valid license, insured road-worthy vehicle, and verified KYC. Commission is automatically deducted at 15% per trip unless on a credits or subscription plan. Qiilu may suspend accounts for policy violations.','Driver Code of Conduct':'Treat all riders with respect regardless of origin. Zero tolerance for harassment, discrimination, or unsafe driving. Always verify the rider\'s identity before starting a trip. Maintain your vehicle in clean, safe condition.'};
+  showModal(`<div class="m-ttl">${t}</div><div style="font-size:12px;color:var(--txt2);line-height:1.8;margin-bottom:14px">${c[t]||'Coming soon.'}</div><div style="font-family:var(--fm);font-size:9px;color:var(--txt3);margin-bottom:14px">Last updated: January 2025</div><button class="btn-o" onclick="closeModal()">Close</button>`);
+}
+
+/* ── FAVOURITES ── */
+function switchFav(t){['r','l'].forEach(x=>{document.getElementById('ft-'+x).classList.toggle('active',x===t);document.getElementById('fs-'+x).style.display=x===t?'flex':'none';});}
+function openAddFav(type){
+  showModal(`
+    <div class="m-ttl">Add Favourite ${type==='rider'?'Rider':'Location'}</div>
+    <div class="m-sub">${type==='rider'?'Favourite riders are saved after completing a trip. Rate your rider to add them.':'Save frequent pickup zones for quick navigation.'}</div>
+    ${type==='location'?`<input class="fldinput" id="fl-n" placeholder="Label (e.g. UCC Gate, Market…)"/><input class="fldinput" id="fl-a" placeholder="Address or landmark"/><button class="btn-p lime" onclick="saveFL()">Save Location</button>`:`<div class="estate" style="padding:16px 0"><div class="e-icon">👤</div><div class="e-ttl">Complete a ride first</div><div class="e-sub">After rating a rider, tap their profile to add them.</div></div><button class="btn-o" onclick="closeModal()">Got it</button>`}
+  `);
+}
+function saveFL(){const n=document.getElementById('fl-n')?.value.trim(),a=document.getElementById('fl-a')?.value.trim();if(!n||!a){toast('⚠️ Fill in both fields');return;}closeModal();toast('📍 "'+n+'" saved!');}
+
+/* ── CHAT ── */
+function openChat(id){
+  const c=convos[id];if(!c)return;
+  activeChat=id;
+  document.getElementById('chat-av').textContent=c.av;
+  document.getElementById('chat-name').textContent=c.name;
+  document.getElementById('chat-sub').textContent=c.sub;
+  const body=document.getElementById('chat-body'),footer=document.getElementById('chat-footer'),active=c.status==='active';
+  if(!active){
+    body.innerHTML=`<div class="chatmsgs" style="justify-content:flex-end">${c.msgs.map(bh).join('')}<div class="chatsys">🔒 Trip Completed — Chat Closed</div></div>`;
+    footer.innerHTML=`<div class="chat-locked">🔒 Chat closed · Trip Completed</div>`;
+  }else{
+    body.innerHTML=`<div class="chatmsgs" id="ms">${c.msgs.length?c.msgs.map(bh).join(''):'<div class="chatsys">Trip chat is open</div>'}</div>`;
+    footer.innerHTML=`<div class="chatbar"><div class="chat-iwrap"><textarea class="chatfield" id="cf" placeholder="Message ${c.name.split(' ')[0]}…" rows="1"></textarea></div><button class="chatsend" onclick="sendM()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button></div>`;
+    sc();
+    setTimeout(()=>{const f=document.getElementById('cf');if(!f)return;f.addEventListener('input',()=>{f.style.height='auto';f.style.height=Math.min(f.scrollHeight,88)+'px';});f.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendM();}});f.focus();},60);
+  }
+  document.getElementById('chatview').classList.add('open');
+}
+function bh(m){const cl=m.from==='me'?'me':'them',wr=m.from==='me'?'wrap-me':'wrap-them';return `<div class="${wr}"><div class="bbl ${cl}">${m.text}</div><div class="bbl-t">${m.time}</div></div>`;}
+function sc(){setTimeout(()=>{const s=document.getElementById('ms');if(s)s.scrollTop=s.scrollHeight;},20);}
+function sendM(){
+  const f=document.getElementById('cf');if(!f)return;
+  const t=f.value.trim();if(!t||!activeChat)return;
+  const c=convos[activeChat];
+  const now=new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  c.msgs.push({from:'me',text:t,time:now});f.value='';f.style.height='auto';
+  const s=document.getElementById('ms');if(s)s.innerHTML=c.msgs.map(bh).join('');sc();
+  setTimeout(()=>{
+    const r=["I'm here!","On my way","Got it!","Coming now 👍","Almost there!","Thanks!"];
+    c.msgs.push({from:'them',text:r[Math.floor(Math.random()*r.length)],time:new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})});
+    const s2=document.getElementById('ms');if(s2)s2.innerHTML=c.msgs.map(bh).join('');sc();
+  },1400);
+}
+function closeChat(){document.getElementById('chatview').classList.remove('open');activeChat=null;}
+
+/* ── MODAL ── */
+function showModal(h){document.getElementById('mbody').innerHTML=h;document.getElementById('moverlay').classList.add('open');}
+function closeModal(e){if(!e||e.target===document.getElementById('moverlay'))document.getElementById('moverlay').classList.remove('open');}
+
+/* ── TOAST ── */
+let ttmr;
+function toast(m){const el=document.getElementById('toast');el.textContent=m;el.classList.add('show');clearTimeout(ttmr);ttmr=setTimeout(()=>el.classList.remove('show'),2700);}
+
+/* ── REQUEST COUNTDOWN TIMERS ── */
+function startTimer(elId, wrapId, s){
+  const el=document.getElementById(elId);if(!el)return;
+  const iv=setInterval(()=>{s--;if(el)el.textContent=s;if(s<=0){clearInterval(iv);rejectReq(wrapId);}},1000);
+}
+window.addEventListener('load',()=>{
+  startTimer('t-app','rw-app',20);
+  startTimer('t-ussd','rw-ussd',15);
+});
+</script>
+</body>
+</html>
