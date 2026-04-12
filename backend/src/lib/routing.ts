@@ -303,11 +303,27 @@ export async function estimateRoute(
 ): Promise<RouteEstimate> {
   const pickup = await resolveRoutePoint(pickupQuery, options?.pickupPoint);
   const destination = await resolveRoutePoint(destinationQuery, options?.destinationPoint);
+  const knownPickup = resolveKnownLocation(pickup.label);
+  const knownDestination = resolveKnownLocation(destination.label);
+
+  if (mapboxToken) {
+    try {
+      const mapboxRoute = await routeWithMapbox(pickup, destination, options?.fareProfile);
+
+      if (mapboxRoute) {
+        return {
+          ...mapboxRoute,
+          pickup,
+          destination
+        };
+      }
+    } catch {
+      // Fall through to OSRM before using the straight-line catalog fallback.
+    }
+  }
 
   try {
-    const routed = mapboxToken
-      ? await routeWithMapbox(pickup, destination, options?.fareProfile)
-      : await routeWithOsrm(pickup, destination, options?.fareProfile);
+    const routed = await routeWithOsrm(pickup, destination, options?.fareProfile);
 
     if (routed) {
       return {
@@ -317,9 +333,6 @@ export async function estimateRoute(
       };
     }
   } catch {
-    const knownPickup = resolveKnownLocation(pickup.label);
-    const knownDestination = resolveKnownLocation(destination.label);
-
     if (!knownPickup || !knownDestination) {
       throw new Error("Live routing is unavailable for this trip right now");
     }
