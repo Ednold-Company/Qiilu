@@ -45,6 +45,25 @@ const passengerIcon = L.divIcon({
   iconAnchor: [12, 12]
 });
 
+const mapboxPublicToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN?.trim();
+const mapboxStyle = process.env.NEXT_PUBLIC_MAPBOX_STYLE_ID?.trim() || "mapbox/streets-v12";
+
+function getTileConfig() {
+  if (mapboxPublicToken) {
+    return {
+      attribution:
+        '&copy; <a href="https://www.mapbox.com/about/maps/">Mapbox</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      url: `https://api.mapbox.com/styles/v1/${mapboxStyle}/tiles/512/{z}/{x}/{y}@2x?access_token=${mapboxPublicToken}`
+    };
+  }
+
+  return {
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+  };
+}
+
 function MapSizeSync({
   center,
   zoom
@@ -93,6 +112,7 @@ export default function PassengerLiveMap({
   fullScreen = false,
   backgroundMode = false
 }: PassengerLiveMapProps) {
+  const tileConfig = useMemo(() => getTileConfig(), []);
   const pickupLocation = useMemo(() => {
     if (pickupCoords) {
       return {
@@ -170,8 +190,10 @@ export default function PassengerLiveMap({
       >
         <MapSizeSync center={center} zoom={zoom} />
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution={tileConfig.attribution}
+          url={tileConfig.url}
+          tileSize={mapboxPublicToken ? 512 : 256}
+          zoomOffset={mapboxPublicToken ? -1 : 0}
         />
         {path ? <Polyline positions={path} pathOptions={{ color: "#111315", weight: 5, opacity: 0.75 }} /> : null}
         <CircleMarker

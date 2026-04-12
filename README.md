@@ -51,6 +51,7 @@ cp frontend/.env.example frontend/.env.local
 Qiilu now supports real route estimation through the backend.
 
 - If `MAPBOX_ACCESS_TOKEN` is set in `backend/.env`, the API uses Mapbox geocoding and directions.
+- If `NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN` is set in `frontend/.env.local`, the Leaflet map tiles also render through Mapbox styles.
 - If it is not set, the app falls back to public routing/geocoding services and known Accra locations for development.
 
 ### Seed data for local demos
@@ -190,6 +191,8 @@ Deploy the Next.js app from the `frontend` directory to Vercel.
 Required frontend environment variables:
 
 - `NEXT_PUBLIC_API_URL`
+- `NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN` optional, enables Mapbox-backed Leaflet tiles on the frontend
+- `NEXT_PUBLIC_MAPBOX_STYLE_ID` optional, defaults to `mapbox/streets-v12`
 
 Recommended Vercel settings:
 
