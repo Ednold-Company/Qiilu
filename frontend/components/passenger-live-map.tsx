@@ -47,6 +47,8 @@ const passengerIcon = L.divIcon({
 
 const mapboxPublicToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN?.trim();
 const mapboxStyle = process.env.NEXT_PUBLIC_MAPBOX_STYLE_ID?.trim() || "mapbox/streets-v12";
+const defaultMapboxStyle = "mapbox/streets-v12";
+const allowCustomMapboxStyle = (process.env.NEXT_PUBLIC_MAPBOX_USE_CUSTOM_STYLE ?? "").trim().toLowerCase() === "true";
 
 async function geocodePreviewLocation(query: string) {
   const trimmed = query.trim();
@@ -121,18 +123,20 @@ async function geocodePreviewLocation(query: string) {
   };
 }
 
-function getTileConfig() {
-  if (mapboxPublicToken) {
+function getTileConfig(styleId?: string | null) {
+  if (mapboxPublicToken && styleId) {
     return {
       attribution:
         '&copy; <a href="https://www.mapbox.com/about/maps/">Mapbox</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      url: `https://api.mapbox.com/styles/v1/${mapboxStyle}/tiles/512/{z}/{x}/{y}@2x?access_token=${mapboxPublicToken}`
+      isMapbox: true,
+      url: `https://api.mapbox.com/styles/v1/${styleId}/tiles/512/{z}/{x}/{y}@2x?access_token=${mapboxPublicToken}`
     };
   }
 
   return {
     attribution:
       '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    isMapbox: false,
     url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
   };
 }
@@ -185,7 +189,17 @@ export default function PassengerLiveMap({
   fullScreen = false,
   backgroundMode = false
 }: PassengerLiveMapProps) {
-  const tileConfig = useMemo(() => getTileConfig(), []);
+  const [tileMode, setTileMode] = useState<"custom" | "defaultMapbox" | "osm">(
+    mapboxPublicToken ? (allowCustomMapboxStyle ? "custom" : "defaultMapbox") : "osm"
+  );
+  const [tileWarning, setTileWarning] = useState<string | null>(null);
+  const tileStyleId =
+    tileMode === "custom"
+      ? mapboxStyle
+      : tileMode === "defaultMapbox"
+        ? defaultMapboxStyle
+        : null;
+  const tileConfig = useMemo(() => getTileConfig(tileStyleId), [tileStyleId]);
   const fallbackLocation = useMemo(() => getDefaultLocation(), []);
   const [previewPickupLocation, setPreviewPickupLocation] = useState<{ lat: number; lng: number; label: string } | null>(null);
   const [previewDestinationLocation, setPreviewDestinationLocation] = useState<{ lat: number; lng: number; label: string } | null>(null);
@@ -319,6 +333,23 @@ export default function PassengerLiveMap({
   const zoom = destinationLocation ? 13 : 15;
 
   const path = route && route.length > 2 ? route : null;
+  useEffect(() => {
+    setTileMode(mapboxPublicToken ? (allowCustomMapboxStyle ? "custom" : "defaultMapbox") : "osm");
+    setTileWarning(null);
+  }, []);
+
+  const handleTileError = () => {
+    if (tileMode === "custom") {
+      setTileMode("defaultMapbox");
+      setTileWarning("Your custom Mapbox style could not be loaded, so Qiilu switched to the default streets map.");
+      return;
+    }
+
+    if (tileMode === "defaultMapbox") {
+      setTileMode("osm");
+      setTileWarning("Mapbox tiles could not be loaded right now, so Qiilu switched to the OpenStreetMap fallback.");
+    }
+  };
 
   return (
     <div
@@ -344,8 +375,11 @@ export default function PassengerLiveMap({
         <TileLayer
           attribution={tileConfig.attribution}
           url={tileConfig.url}
-          tileSize={mapboxPublicToken ? 512 : 256}
-          zoomOffset={mapboxPublicToken ? -1 : 0}
+          tileSize={tileConfig.isMapbox ? 512 : 256}
+          zoomOffset={tileConfig.isMapbox ? -1 : 0}
+          eventHandlers={{
+            tileerror: handleTileError
+          }}
         />
         {path ? <Polyline positions={path} pathOptions={{ color: "#111315", weight: 5, opacity: 0.75 }} /> : null}
         <CircleMarker
@@ -380,6 +414,14 @@ export default function PassengerLiveMap({
           </Marker>
         ) : null}
       </MapContainer>
+      {tileWarning ? (
+        <div className="pointer-events-none absolute bottom-4 left-4 right-4 z-[500] rounded-xl border border-amber-300/40 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-700 shadow-sm dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+          {tileWarning}
+        </div>
+      ) : null}
+      {fullScreen ? (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[420] h-28 bg-gradient-to-t from-background/72 via-background/18 to-transparent dark:from-[#10151b]/78 dark:via-[#10151b]/24 dark:to-transparent" />
+      ) : null}
     </div>
   );
 }

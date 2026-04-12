@@ -178,6 +178,7 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
   const [incidentDescription, setIncidentDescription] = useState("");
   const [driverLocation, setDriverLocation] = useState<DriverLocationPayload | null>(null);
   const [liveLocation, setLiveLocation] = useState<LiveLocation | null>(null);
+  const [currentPickupAnchor, setCurrentPickupAnchor] = useState<LiveLocation | null>(null);
   const [pickupSuggestions, setPickupSuggestions] = useState<PlaceSuggestion[]>([]);
   const [destinationSuggestions, setDestinationSuggestions] = useState<PlaceSuggestion[]>([]);
   const [pickupSelection, setPickupSelection] = useState<ResolvedPlace | null>(null);
@@ -217,6 +218,7 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
 
         setLiveLocation(nextLocation);
         setPickup((current) => (current.trim() ? current : "Current location"));
+        setCurrentPickupAnchor((current) => current ?? nextLocation);
       },
       () => {
         setFeedback((current) => current ?? "Location access was blocked. You can still enter a pickup manually.");
@@ -342,8 +344,8 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
           pickupCoords:
             pickupSelection
               ? { lat: pickupSelection.lat, lng: pickupSelection.lng }
-              : pickup === "Current location" && liveLocation
-                ? liveLocation
+              : pickup === "Current location" && currentPickupAnchor
+                ? currentPickupAnchor
                 : null,
           destinationCoords: destinationSelection
             ? { lat: destinationSelection.lat, lng: destinationSelection.lng }
@@ -362,7 +364,7 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
     }, 450);
 
     return () => window.clearTimeout(timeoutId);
-  }, [destination, destinationSelection, liveLocation, pickup, pickupSelection, selectedVehicleId, token]);
+  }, [currentPickupAnchor, destination, destinationSelection, pickup, pickupSelection, selectedVehicleId, token]);
 
   useEffect(() => {
     const socket = new WebSocket(getRealtimeUrl(token));
@@ -507,8 +509,8 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
           pickupCoords:
             pickupSelection
               ? { lat: pickupSelection.lat, lng: pickupSelection.lng }
-              : pickup === "Current location" && liveLocation
-                ? liveLocation
+              : pickup === "Current location" && currentPickupAnchor
+                ? currentPickupAnchor
                 : null,
           destinationCoords: destinationSelection
             ? { lat: destinationSelection.lat, lng: destinationSelection.lng }
@@ -606,6 +608,7 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
 
     setPickup("Current location");
     setPickupSelection(null);
+    setCurrentPickupAnchor(liveLocation);
     setPickupSuggestions([]);
     setFeedback("Using your live location as pickup.");
   };
@@ -620,6 +623,7 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
     setDestination(nextDestination);
     setPickupSelection(nextPickupSelection);
     setDestinationSelection(nextDestinationSelection);
+    setCurrentPickupAnchor(nextPickup === "Current location" ? currentPickupAnchor : null);
     setPickupSuggestions([]);
     setDestinationSuggestions([]);
   };
@@ -628,6 +632,7 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
     if (!pickup.trim() && liveLocation) {
       setPickup("Current location");
       setPickupSelection(null);
+      setCurrentPickupAnchor(liveLocation);
     }
 
     setDestination(label);
@@ -641,6 +646,12 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
 
     if (pickupSelection && value.trim() !== pickupSelection.fullAddress) {
       setPickupSelection(null);
+    }
+
+    if (value.trim() !== "Current location") {
+      setCurrentPickupAnchor(null);
+    } else if (liveLocation) {
+      setCurrentPickupAnchor((current) => current ?? liveLocation);
     }
   };
 
@@ -664,6 +675,7 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
       });
       setPickup(place.fullAddress);
       setPickupSelection(place);
+      setCurrentPickupAnchor(null);
       setPickupSuggestions([]);
       pickupSearchSessionRef.current = createPlaceSearchSession();
     } catch {
@@ -707,8 +719,8 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
   const pickupCoords =
     pickupSelection
       ? { lat: pickupSelection.lat, lng: pickupSelection.lng }
-      : pickup === "Current location" && liveLocation
-      ? liveLocation
+      : pickup === "Current location" && currentPickupAnchor
+      ? currentPickupAnchor
       : estimate?.pickup
         ? { lat: estimate.pickup.lat, lng: estimate.pickup.lng }
         : null;

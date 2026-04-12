@@ -1194,6 +1194,21 @@ input {
   width: 100%;
   height: 100%;
   font: inherit;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  will-change: transform;
+}
+
+.leaflet-pane,
+.leaflet-tile-pane,
+.leaflet-overlay-pane,
+.leaflet-marker-pane,
+.leaflet-shadow-pane,
+.leaflet-tile-container,
+.leaflet-tile,
+.leaflet-zoom-animated {
+  backface-visibility: hidden;
+  transform: translateZ(0);
 }
 
 .leaflet-custom-icon {
