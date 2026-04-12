@@ -1,0 +1,12 @@
+.git
+.gitignore
+README.md
+frontend
+qiilu-ui
+passenger.html
+rider.html
+**/node_modules
+**/.next
+**/dist
+**/.env
+npm-debug.log*

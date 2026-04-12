@@ -211,13 +211,17 @@ Qiilu is now prepped specifically for:
 
 Files added for Railway:
 
+- [railway.json](/c:/Users/arnoc/Desktop/Website%20Projects%202026/Qiilu/railway.json)
+- [Dockerfile](/c:/Users/arnoc/Desktop/Website%20Projects%202026/Qiilu/Dockerfile)
 - [backend/railway.json](/c:/Users/arnoc/Desktop/Website%20Projects%202026/Qiilu/backend/railway.json)
 - [backend/Dockerfile](/c:/Users/arnoc/Desktop/Website%20Projects%202026/Qiilu/backend/Dockerfile)
 
 Recommended Railway setup:
 
 1. Create a new Railway service from this repo
-2. Set the root directory to `backend`
+2. You can either:
+   - set the root directory to `backend`, or
+   - leave the root directory at the repo root and use the root [Dockerfile](/c:/Users/arnoc/Desktop/Website%20Projects%202026/Qiilu/Dockerfile)
 3. Let Railway build from the Dockerfile
 4. Set these required variables:
    - `DATABASE_URL`
