@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { fetchJson } from "@/lib/api";
 import { clearSession, type SessionUser } from "@/lib/auth-session";
+import { shouldUpdateLiveCoords } from "@/lib/map-motion";
 import { useTheme } from "@/lib/theme";
 
 const PassengerLiveMap = dynamic(() => import("@/components/passenger-live-map"), { ssr: false });
@@ -258,10 +259,12 @@ export function DriverHomeMobilePage({ user }: { user: SessionUser }) {
 
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
-        setCurrentCoords({
+        const nextCoords = {
           lat: position.coords.latitude,
           lng: position.coords.longitude
-        });
+        };
+
+        setCurrentCoords((current) => (shouldUpdateLiveCoords(current, nextCoords) ? nextCoords : current));
       },
       () => undefined,
       {

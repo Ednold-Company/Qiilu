@@ -51,6 +51,8 @@ type VehicleOption = {
   priceGhs: number;
   description: string;
   nearby: number;
+  isAvailable: boolean;
+  availabilityLabel: string;
 };
 
 type RouteEstimate = {
@@ -237,7 +239,7 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
     fetchJson<{ options: VehicleOption[] }>("/passenger/vehicle-options")
       .then((payload) => {
         setVehicleOptions(payload.options);
-        setSelectedVehicleId(payload.options[0]?.id ?? null);
+        setSelectedVehicleId(payload.options.find((option) => option.isAvailable)?.id ?? payload.options[0]?.id ?? null);
       })
       .catch((error) => {
         setFeedback(error instanceof Error ? error.message : "Could not load vehicle options.");
@@ -321,7 +323,9 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
   }, [destination, destinationSelection, liveLocation]);
 
   useEffect(() => {
-    if (!pickup.trim() || !destination.trim()) {
+    const currentVehicle = vehicleOptions.find((option) => option.id === selectedVehicleId) ?? null;
+
+    if (!pickup.trim() || !destination.trim() || (currentVehicle && !currentVehicle.isAvailable)) {
       setEstimate(null);
       return;
     }
@@ -364,7 +368,7 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
     }, 450);
 
     return () => window.clearTimeout(timeoutId);
-  }, [currentPickupAnchor, destination, destinationSelection, pickup, pickupSelection, selectedVehicleId, token]);
+  }, [currentPickupAnchor, destination, destinationSelection, pickup, pickupSelection, selectedVehicleId, token, vehicleOptions]);
 
   useEffect(() => {
     const socket = new WebSocket(getRealtimeUrl(token));
@@ -447,21 +451,21 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
   }, [activeRide?.ride.status]);
 
   const selectedVehicle = vehicleOptions.find((option) => option.id === selectedVehicleId) ?? null;
-  const canBook = Boolean(pickup.trim() && destination.trim() && selectedVehicle && estimate && !isBooking);
+  const canBook = Boolean(pickup.trim() && destination.trim() && selectedVehicle?.isAvailable && estimate && !isBooking);
   const fareLabel =
     estimate
       ? `GHS ${estimate.fareGhs.toFixed(2)}`
       : isEstimating
         ? "Estimating..."
-        : selectedVehicle
+        : selectedVehicle && selectedVehicle.isAvailable
           ? `From GHS ${selectedVehicle.priceGhs.toFixed(2)}`
-          : "Select a ride";
+          : "Unavailable";
   const fareSummaryLabel =
     estimate
       ? `GHS ${estimate.fareGhs.toFixed(2)}`
-      : selectedVehicle
+      : selectedVehicle && selectedVehicle.isAvailable
         ? `From GHS ${selectedVehicle.priceGhs.toFixed(2)}`
-        : "Waiting for route";
+        : "Waiting for drivers";
   const routeNotice =
     estimate?.provider === "catalog"
       ? "Live road routing is unavailable for this trip right now, so Qiilu is showing a straight-line backup estimate."
@@ -948,7 +952,11 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
                   ) : selectedVehicle ? (
                     <button
                       type="button"
-                      className="rounded-2xl border-2 border-primary bg-primary/5 p-4 text-left"
+                      className={`rounded-2xl border-2 p-4 text-left ${
+                        selectedVehicle.isAvailable
+                          ? "border-primary bg-primary/5"
+                          : "border-border bg-muted/40 opacity-95 dark:bg-white/5"
+                      }`}
                       onClick={() => setSelectedVehicleId(selectedVehicle.id)}
                     >
                       <div className="flex items-center justify-between">
@@ -957,14 +965,18 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
                           <div>
                             <div className="font-bold">{selectedVehicle.label}</div>
                             <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                              <User className="h-3 w-3" /> {selectedVehicle.seats} seats • {selectedVehicle.etaMinutes} min ETA
+                              <User className="h-3 w-3" /> {selectedVehicle.seats} seats{selectedVehicle.isAvailable ? ` • ${selectedVehicle.etaMinutes} min ETA` : ""}
                             </div>
-                            <div className="mt-1 text-xs text-muted-foreground">{selectedVehicle.description}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {selectedVehicle.isAvailable ? selectedVehicle.description : "This ride type is configured, but no drivers are online for it right now."}
+                            </div>
                           </div>
                         </div>
                         <div className="text-right">
                           <div className="text-lg font-bold">{fareLabel}</div>
-                          <div className="text-[10px] font-bold uppercase text-primary">{selectedVehicle.nearby} nearby</div>
+                          <div className={`text-[10px] font-bold uppercase ${selectedVehicle.isAvailable ? "text-primary" : "text-amber-600 dark:text-amber-300"}`}>
+                            {selectedVehicle.isAvailable ? selectedVehicle.availabilityLabel : "Unavailable"}
+                          </div>
                         </div>
                       </div>
                     </button>
@@ -1144,7 +1156,9 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
                 label: selectedVehicle.label,
                 seats: selectedVehicle.seats,
                 etaMinutes: selectedVehicle.etaMinutes,
-                priceGhs: selectedVehicle.priceGhs
+                priceGhs: selectedVehicle.priceGhs,
+                isAvailable: selectedVehicle.isAvailable,
+                availabilityLabel: selectedVehicle.availabilityLabel
               }
             : null
         }
@@ -1273,7 +1287,9 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
                 <div className="mb-5 space-y-3">
                   <button
                     type="button"
-                    className="w-full rounded-2xl border-2 border-primary bg-primary/5 p-4 text-left"
+                    className={`w-full rounded-2xl border-2 p-4 text-left ${
+                      selectedVehicle?.isAvailable ? "border-primary bg-primary/5" : "border-border bg-muted/40 dark:bg-white/5"
+                    }`}
                     onClick={() => selectedVehicle && setSelectedVehicleId(selectedVehicle.id)}
                   >
                     <div className="flex items-center justify-between">
@@ -1289,19 +1305,33 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
                             </div>
                           </div>
                           <div className="mt-0.5 text-sm text-muted-foreground">
-                            {selectedVehicle ? `${selectedVehicle.etaMinutes} min away` : "Waiting for vehicle configuration"}
+                            {selectedVehicle
+                              ? selectedVehicle.isAvailable
+                                ? `${selectedVehicle.etaMinutes} min away`
+                                : "No drivers online for this ride type"
+                              : "Waiting for vehicle configuration"}
                           </div>
                         </div>
                       </div>
                       <div className="text-right">
                         <div className="font-bold text-lg">{fareLabel}</div>
-                        <div className="mt-1 inline-block rounded-md bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">
-                          Recommended
+                        <div className={`mt-1 inline-block rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                          selectedVehicle?.isAvailable
+                            ? "bg-primary/10 text-primary"
+                            : "bg-amber-500/10 text-amber-700 dark:text-amber-200"
+                        }`}>
+                          {selectedVehicle?.isAvailable ? selectedVehicle.availabilityLabel : "Unavailable"}
                         </div>
                       </div>
                     </div>
                   </button>
                 </div>
+
+                {selectedVehicle && !selectedVehicle.isAvailable ? (
+                  <div className="mb-4 rounded-2xl border border-amber-300/40 bg-amber-500/10 p-4 text-sm font-medium text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                    No drivers are online for this option right now. Keep your route set and try again when a driver comes online.
+                  </div>
+                ) : null}
 
                 {feedback ? <div className="mb-4 rounded-2xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground dark:bg-white/5">{feedback}</div> : null}
 

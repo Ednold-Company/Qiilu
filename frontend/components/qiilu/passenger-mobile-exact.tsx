@@ -29,6 +29,8 @@ type VehicleSummary = {
   seats: number;
   etaMinutes: number;
   priceGhs?: number;
+  isAvailable?: boolean;
+  availabilityLabel?: string;
 };
 
 type RideSummary = {
@@ -224,7 +226,11 @@ export function PassengerMobileExact({
               </div>
 
               <div className="space-y-3 mb-6">
-                <div className="flex items-center justify-between p-4 rounded-2xl border-2 transition-all cursor-pointer border-primary bg-primary/5">
+                <div
+                  className={`flex items-center justify-between rounded-2xl border-2 p-4 transition-all ${
+                    selectedVehicle?.isAvailable ? "border-primary bg-primary/5" : "border-border bg-muted/40"
+                  }`}
+                >
                   <div className="flex items-center gap-4">
                     <div className="w-14 h-14 rounded-xl bg-muted flex items-center justify-center">
                       <Car className="w-7 h-7 text-foreground" />
@@ -237,16 +243,34 @@ export function PassengerMobileExact({
                         </div>
                       </div>
                       <div className="text-sm text-muted-foreground mt-0.5">
-                        {selectedVehicle ? `${selectedVehicle.etaMinutes} min away` : "Waiting for vehicle configuration"}
+                        {selectedVehicle
+                          ? selectedVehicle.isAvailable
+                            ? `${selectedVehicle.etaMinutes} min away`
+                            : "No drivers online for this ride type"
+                          : "Waiting for vehicle configuration"}
                       </div>
                     </div>
                   </div>
                   <div className="text-right">
-                        <div className="font-bold text-lg">{fareLabel}</div>
-                    <div className="text-[10px] text-primary font-bold uppercase tracking-wider bg-primary/10 px-2 py-0.5 rounded-md inline-block mt-1">Recommended</div>
+                    <div className="font-bold text-lg">{fareLabel}</div>
+                    <div
+                      className={`mt-1 inline-block rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                        selectedVehicle?.isAvailable
+                          ? "bg-primary/10 text-primary"
+                          : "bg-amber-500/10 text-amber-700 dark:text-amber-200"
+                      }`}
+                    >
+                      {selectedVehicle?.isAvailable ? selectedVehicle.availabilityLabel ?? "Available" : "Unavailable"}
+                    </div>
                   </div>
                 </div>
               </div>
+
+              {selectedVehicle && !selectedVehicle.isAvailable ? (
+                <div className="mb-4 rounded-2xl border border-amber-300/40 bg-amber-500/10 p-4 text-sm font-medium text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                  No drivers are online for this ride type right now. Keep the route set and try again when a driver comes online.
+                </div>
+              ) : null}
 
               {feedback ? <div className="mb-4 rounded-2xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground">{feedback}</div> : null}
               {(isResolvingPickupSuggestion || isResolvingDestinationSuggestion) ? (

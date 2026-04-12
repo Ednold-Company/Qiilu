@@ -3,6 +3,7 @@ import type { AuthenticatedRequest } from "../middleware/auth.js";
 import { requireAuth } from "../middleware/auth.js";
 import { prisma } from "../lib/prisma.js";
 import { createRideBooking } from "../lib/ride-booking.js";
+import { buildVehicleFareProfile } from "../lib/pricing.js";
 import { realtimeGateway } from "../lib/realtime.js";
 import { estimateRoute, getRoutingStatus } from "../lib/routing.js";
 
@@ -63,6 +64,16 @@ function toTrustedContacts(value: unknown) {
 }
 
 passengerRouter.get("/vehicle-options", async (_request, response) => {
+  const availableDrivers = await prisma.user.findMany({
+    where: {
+      role: "DRIVER",
+      availability: "AVAILABLE"
+    },
+    select: {
+      id: true
+    }
+  });
+  const connectedDriverCount = availableDrivers.filter((driver) => realtimeGateway.isUserConnected(driver.id, "DRIVER")).length;
   const vehicles = await prisma.vehicle.findMany({
     where: { active: true, category: "CAR" },
     orderBy: { baseFareGhs: "asc" }
@@ -78,7 +89,12 @@ passengerRouter.get("/vehicle-options", async (_request, response) => {
       seats: vehicle.seats,
       priceGhs: vehicle.baseFareGhs,
       description: vehicle.description,
-      nearby: vehicle.nearbyCount
+      nearby: connectedDriverCount,
+      isAvailable: connectedDriverCount > 0,
+      availabilityLabel:
+        connectedDriverCount > 0
+          ? `${connectedDriverCount} driver${connectedDriverCount === 1 ? "" : "s"} online`
+          : "No drivers online right now"
     }))
   });
 });
@@ -138,13 +154,10 @@ passengerRouter.post("/route-estimate", requireAuth, async (request: Authenticat
               label: body.destination
             }
           : null,
-      fareProfile: {
+      fareProfile: buildVehicleFareProfile({
         baseFareGhs: vehicle.baseFareGhs,
-        minimumFareGhs: vehicle.baseFareGhs,
-        distanceRateGhs: vehicle.serviceKind === "PRIVATE" ? 2.65 : 2.15,
-        timeRateGhs: vehicle.serviceKind === "PRIVATE" ? 0.5 : 0.35,
-        serviceFeeGhs: vehicle.serviceKind === "PRIVATE" ? 3 : 2
-      }
+        serviceKind: vehicle.serviceKind
+      })
     });
     response.json({ estimate });
   } catch {

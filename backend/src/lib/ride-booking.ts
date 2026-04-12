@@ -1,4 +1,5 @@
 import { initiateRidePayment } from "./payments.js";
+import { buildVehicleFareProfile } from "./pricing.js";
 import { prisma } from "./prisma.js";
 import { realtimeGateway } from "./realtime.js";
 import { estimateRoute } from "./routing.js";
@@ -102,13 +103,10 @@ export async function createRideBooking(input: CreateRideBookingInput) {
           label: input.destination
         }
       : null,
-    fareProfile: {
+    fareProfile: buildVehicleFareProfile({
       baseFareGhs: vehicleProfile.baseFareGhs,
-      minimumFareGhs: vehicleProfile.baseFareGhs,
-      distanceRateGhs: vehicleProfile.serviceKind === "PRIVATE" ? 2.65 : 2.15,
-      timeRateGhs: vehicleProfile.serviceKind === "PRIVATE" ? 0.5 : 0.35,
-      serviceFeeGhs: vehicleProfile.serviceKind === "PRIVATE" ? 3 : 2
-    }
+      serviceKind: vehicleProfile.serviceKind
+    })
   });
 
   const ride = await prisma.ride.create({
