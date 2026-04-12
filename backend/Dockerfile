@@ -1,10 +1,17 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
+COPY prisma ./prisma
+COPY prisma.config.ts ./prisma.config.ts
+ARG DATABASE_URL=postgresql://postgres:postgres@localhost:5432/qiilu?sslmode=disable
+ENV DATABASE_URL=${DATABASE_URL}
 RUN npm ci
+RUN npx prisma generate
 
 FROM node:22-alpine AS builder
 WORKDIR /app
+ARG DATABASE_URL=postgresql://postgres:postgres@localhost:5432/qiilu?sslmode=disable
+ENV DATABASE_URL=${DATABASE_URL}
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
