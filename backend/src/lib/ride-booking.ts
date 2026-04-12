@@ -11,6 +11,8 @@ export type CreateRideBookingInput = {
   pickup: string;
   destination: string;
   pickupCoords?: { lat: number; lng: number } | null;
+  vehicleId?: string;
+  vehicleType?: string;
   paymentMethod: RidePaymentMethod;
   momoProvider?: string;
   requestSource?: RideRequestSource;
@@ -45,16 +47,38 @@ export async function createRideBooking(input: CreateRideBookingInput) {
   const passenger = await prisma.user.findUnique({
     where: { id: input.passengerId }
   });
-  const vehicle = await prisma.vehicle.findFirst({
-    where: {
-      category: "CAR",
-      active: true
-    }
-  });
+  const vehicle =
+    input.vehicleId
+      ? await prisma.vehicle.findFirst({
+          where: {
+            id: input.vehicleId,
+            active: true
+          }
+        })
+      : null;
 
-  if (!passenger || !vehicle) {
+  const fallbackVehicle =
+    vehicle ??
+    (input.vehicleType
+      ? await prisma.vehicle.findFirst({
+          where: {
+            category: input.vehicleType as "CAR",
+            active: true
+          }
+        })
+      : null) ??
+    (await prisma.vehicle.findFirst({
+      where: {
+        category: "CAR",
+        active: true
+      }
+    }));
+
+  if (!passenger || !fallbackVehicle) {
     throw new Error("Passenger or vehicle could not be resolved");
   }
+
+  const vehicleProfile = fallbackVehicle;
 
   const trustedContacts = input.trustedContacts ?? [];
   const safetyShareEnabled = input.safetyShareEnabled ?? true;
@@ -69,7 +93,14 @@ export async function createRideBooking(input: CreateRideBookingInput) {
           lng: input.pickupCoords.lng,
           label: input.pickup
         }
-      : null
+      : null,
+    fareProfile: {
+      baseFareGhs: vehicleProfile.baseFareGhs,
+      minimumFareGhs: vehicleProfile.baseFareGhs,
+      distanceRateGhs: vehicleProfile.serviceKind === "PRIVATE" ? 2.65 : 2.15,
+      timeRateGhs: vehicleProfile.serviceKind === "PRIVATE" ? 0.5 : 0.35,
+      serviceFeeGhs: vehicleProfile.serviceKind === "PRIVATE" ? 3 : 2
+    }
   });
 
   const ride = await prisma.ride.create({
@@ -89,7 +120,7 @@ export async function createRideBooking(input: CreateRideBookingInput) {
       trustedContactCount: trustedContacts.length,
       lowBandwidthBooking: input.lowBandwidthBooking ?? false,
       passengerId: passenger.id,
-      vehicleId: vehicle.id
+      vehicleId: vehicleProfile.id
     }
   });
 

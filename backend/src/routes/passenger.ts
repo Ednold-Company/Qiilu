@@ -92,11 +92,29 @@ passengerRouter.post("/route-estimate", requireAuth, async (request: Authenticat
   const body = request.body as {
     pickup?: string;
     destination?: string;
+    vehicleId?: string;
     pickupCoords?: { lat?: number; lng?: number } | null;
   };
 
   if (!body.pickup || !body.destination) {
     response.status(400).json({ message: "Pickup and destination are required" });
+    return;
+  }
+
+  if (!body.vehicleId) {
+    response.status(400).json({ message: "Select a vehicle before estimating the fare" });
+    return;
+  }
+
+  const vehicle = await prisma.vehicle.findFirst({
+    where: {
+      id: body.vehicleId,
+      active: true
+    }
+  });
+
+  if (!vehicle) {
+    response.status(404).json({ message: "Selected vehicle is not available right now" });
     return;
   }
 
@@ -109,7 +127,14 @@ passengerRouter.post("/route-estimate", requireAuth, async (request: Authenticat
               lng: body.pickupCoords.lng,
               label: body.pickup
             }
-          : null
+          : null,
+      fareProfile: {
+        baseFareGhs: vehicle.baseFareGhs,
+        minimumFareGhs: vehicle.baseFareGhs,
+        distanceRateGhs: vehicle.serviceKind === "PRIVATE" ? 2.65 : 2.15,
+        timeRateGhs: vehicle.serviceKind === "PRIVATE" ? 0.5 : 0.35,
+        serviceFeeGhs: vehicle.serviceKind === "PRIVATE" ? 3 : 2
+      }
     });
     response.json({ estimate });
   } catch {
@@ -334,6 +359,7 @@ passengerRouter.post("/rides", requireAuth, async (request: AuthenticatedRequest
     pickup?: string;
     destination?: string;
     pickupCoords?: { lat?: number; lng?: number } | null;
+    vehicleId?: string;
     vehicleType?: string;
     paymentMethod?: "MOMO" | "CASH" | string;
     momoProvider?: string;
@@ -368,6 +394,8 @@ passengerRouter.post("/rides", requireAuth, async (request: AuthenticatedRequest
             lng: body.pickupCoords.lng
           }
         : null,
+    vehicleId: body.vehicleId,
+    vehicleType: body.vehicleType,
     paymentMethod,
     momoProvider: body.momoProvider,
     requestSource: "APP",

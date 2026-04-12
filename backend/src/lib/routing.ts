@@ -16,6 +16,14 @@ export type RouteEstimate = {
   route: [number, number][];
 };
 
+export type FareProfile = {
+  baseFareGhs: number;
+  minimumFareGhs?: number;
+  distanceRateGhs?: number;
+  timeRateGhs?: number;
+  serviceFeeGhs?: number;
+};
+
 type OptionalRoutePoint = {
   lat: number;
   lng: number;
@@ -46,12 +54,18 @@ function toRadians(value: number) {
   return (value * Math.PI) / 180;
 }
 
-function calculateFare(distanceKm: number, durationMinutes: number) {
-  const baseFare = 8.5;
-  const distanceComponent = distanceKm * 2.65;
-  const timeComponent = durationMinutes * 0.5;
-  const serviceFee = 3;
-  const minimumFare = 18;
+function calculateFare(
+  distanceKm: number,
+  durationMinutes: number,
+  fareProfile?: FareProfile
+) {
+  const baseFare = fareProfile?.baseFareGhs ?? 8.5;
+  const distanceRate = fareProfile?.distanceRateGhs ?? 2.65;
+  const timeRate = fareProfile?.timeRateGhs ?? 0.5;
+  const serviceFee = fareProfile?.serviceFeeGhs ?? 3;
+  const minimumFare = fareProfile?.minimumFareGhs ?? Math.max(18, baseFare);
+  const distanceComponent = distanceKm * distanceRate;
+  const timeComponent = durationMinutes * timeRate;
 
   return round(Math.max(minimumFare, baseFare + distanceComponent + timeComponent + serviceFee));
 }
@@ -172,7 +186,7 @@ async function resolveRoutePoint(query: string, fallbackPoint?: OptionalRoutePoi
   return geocodeLocation(query);
 }
 
-async function routeWithMapbox(start: RoutePoint, end: RoutePoint) {
+async function routeWithMapbox(start: RoutePoint, end: RoutePoint, fareProfile?: FareProfile) {
   if (!mapboxToken) {
     return null;
   }
@@ -217,12 +231,12 @@ async function routeWithMapbox(start: RoutePoint, end: RoutePoint) {
     provider: "mapbox" as const,
     distanceKm,
     durationMinutes,
-    fareGhs: calculateFare(distanceKm, durationMinutes),
+    fareGhs: calculateFare(distanceKm, durationMinutes, fareProfile),
     route: route.geometry.coordinates.map(([lng, lat]) => [lat, lng] as [number, number])
   };
 }
 
-async function routeWithOsrm(start: RoutePoint, end: RoutePoint) {
+async function routeWithOsrm(start: RoutePoint, end: RoutePoint, fareProfile?: FareProfile) {
   const endpoint = new URL(
     `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}`
   );
@@ -256,12 +270,12 @@ async function routeWithOsrm(start: RoutePoint, end: RoutePoint) {
     provider: "osrm" as const,
     distanceKm,
     durationMinutes,
-    fareGhs: calculateFare(distanceKm, durationMinutes),
+    fareGhs: calculateFare(distanceKm, durationMinutes, fareProfile),
     route: route.geometry.coordinates.map(([lng, lat]) => [lat, lng] as [number, number])
   };
 }
 
-function routeFromCatalog(start: RoutePoint, end: RoutePoint) {
+function routeFromCatalog(start: RoutePoint, end: RoutePoint, fareProfile?: FareProfile) {
   const straightLineKm = haversineDistanceKm(start, end);
   const networkDistanceKm = round(Math.max(1.2, straightLineKm * 1.28));
   const durationMinutes = Math.max(4, Math.round(networkDistanceKm * 3.6));
@@ -270,7 +284,7 @@ function routeFromCatalog(start: RoutePoint, end: RoutePoint) {
     provider: "catalog" as const,
     distanceKm: networkDistanceKm,
     durationMinutes,
-    fareGhs: calculateFare(networkDistanceKm, durationMinutes),
+    fareGhs: calculateFare(networkDistanceKm, durationMinutes, fareProfile),
     route: [
       [start.lat, start.lng] as [number, number],
       [end.lat, end.lng] as [number, number]
@@ -284,6 +298,7 @@ export async function estimateRoute(
   options?: {
     pickupPoint?: OptionalRoutePoint | null;
     destinationPoint?: OptionalRoutePoint | null;
+    fareProfile?: FareProfile;
   }
 ): Promise<RouteEstimate> {
   const pickup = await resolveRoutePoint(pickupQuery, options?.pickupPoint);
@@ -291,8 +306,8 @@ export async function estimateRoute(
 
   try {
     const routed = mapboxToken
-      ? await routeWithMapbox(pickup, destination)
-      : await routeWithOsrm(pickup, destination);
+      ? await routeWithMapbox(pickup, destination, options?.fareProfile)
+      : await routeWithOsrm(pickup, destination, options?.fareProfile);
 
     if (routed) {
       return {
@@ -311,7 +326,7 @@ export async function estimateRoute(
   }
 
   return {
-    ...routeFromCatalog(pickup, destination),
+    ...routeFromCatalog(pickup, destination, options?.fareProfile),
     pickup,
     destination
   };

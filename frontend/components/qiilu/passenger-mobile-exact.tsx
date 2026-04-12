@@ -27,6 +27,7 @@ type VehicleSummary = {
   label: string;
   seats: number;
   etaMinutes: number;
+  priceGhs?: number;
 };
 
 type RideSummary = {
@@ -186,7 +187,7 @@ export function PassengerMobileExact({
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="font-bold text-lg">{fareLabel}</div>
+                        <div className="font-bold text-lg">{fareLabel}</div>
                     <div className="text-[10px] text-primary font-bold uppercase tracking-wider bg-primary/10 px-2 py-0.5 rounded-md inline-block mt-1">Recommended</div>
                   </div>
                 </div>
@@ -210,7 +211,7 @@ export function PassengerMobileExact({
         {step === "searching" ? (
           <div className="bg-background/82 backdrop-blur-xl rounded-t-[2rem] border-t border-border/70 p-8 pb-24 shadow-[0_-10px_40px_rgba(0,0,0,0.16)] pointer-events-auto flex flex-col items-center justify-center min-h-[300px]">
             <div className="w-24 h-24 rounded-full border-4 border-muted border-t-primary animate-spin mb-6" />
-            <h2 className="text-xl font-bold mb-2">Connecting to nearby drivers...</h2>
+                  <h2 className="text-xl font-bold mb-2">Connecting to nearby drivers...</h2>
             <p className="text-muted-foreground text-center">Finding the closest Qiilu Car for you</p>
           </div>
         ) : null}

@@ -209,6 +209,12 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
     }
 
     const timeoutId = window.setTimeout(() => {
+      if (!selectedVehicleId) {
+        setEstimate(null);
+        setIsEstimating(false);
+        return;
+      }
+
       setIsEstimating(true);
       fetchJson<{ estimate: RouteEstimate }>("/passenger/route-estimate", {
         method: "POST",
@@ -216,6 +222,7 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
         body: JSON.stringify({
           pickup,
           destination,
+          vehicleId: selectedVehicleId,
           pickupCoords: pickup === "Current location" && liveLocation ? liveLocation : null
         })
       })
@@ -231,7 +238,7 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
     }, 450);
 
     return () => window.clearTimeout(timeoutId);
-  }, [destination, liveLocation, pickup, token]);
+  }, [destination, liveLocation, pickup, selectedVehicleId, token]);
 
   useEffect(() => {
     const socket = new WebSocket(getRealtimeUrl(token));
@@ -315,6 +322,20 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
 
   const selectedVehicle = vehicleOptions.find((option) => option.id === selectedVehicleId) ?? null;
   const canBook = Boolean(pickup.trim() && destination.trim() && selectedVehicle && estimate && !isBooking);
+  const fareLabel =
+    estimate
+      ? `GHS ${estimate.fareGhs.toFixed(2)}`
+      : isEstimating
+        ? "Estimating..."
+        : selectedVehicle
+          ? `From GHS ${selectedVehicle.priceGhs.toFixed(2)}`
+          : "Select a ride";
+  const fareSummaryLabel =
+    estimate
+      ? `GHS ${estimate.fareGhs.toFixed(2)}`
+      : selectedVehicle
+        ? `From GHS ${selectedVehicle.priceGhs.toFixed(2)}`
+        : "Waiting for route";
 
   const saveExperience = async () => {
     setIsSavingExperience(true);
@@ -356,6 +377,7 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
           pickup,
           destination,
           pickupCoords: pickup === "Current location" && liveLocation ? liveLocation : null,
+          vehicleId: selectedVehicle.id,
           vehicleType: selectedVehicle.label,
           paymentMethod,
           trustedContacts: trustedContacts.split(",").map((item) => item.trim()).filter(Boolean),
@@ -676,7 +698,7 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
                           </div>
                         </div>
                         <div className="text-right">
-                          <div className="text-lg font-bold">GHS {estimate ? estimate.fareGhs.toFixed(2) : selectedVehicle.priceGhs.toFixed(2)}</div>
+                          <div className="text-lg font-bold">{fareLabel}</div>
                           <div className="text-[10px] font-bold uppercase text-primary">{selectedVehicle.nearby} nearby</div>
                         </div>
                       </div>
@@ -710,7 +732,7 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
                   <div className="mt-6 rounded-2xl border border-border bg-muted/40 p-4 dark:bg-white/5">
                     <div className="mb-2 flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Estimated fare</span>
-                      <strong>{estimate ? `GHS ${estimate.fareGhs.toFixed(2)}` : "Waiting for route"}</strong>
+                      <strong>{fareSummaryLabel}</strong>
                     </div>
                     <div className="mb-2 flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Estimated time</span>
@@ -843,8 +865,17 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
         quickDestinations={quickDestinations.map((location) => location.label)}
         onQuickDestination={chooseQuickDestination}
         onUseLivePickup={useLivePickup}
-        selectedVehicle={selectedVehicle ? { label: selectedVehicle.label, seats: selectedVehicle.seats, etaMinutes: selectedVehicle.etaMinutes } : null}
-        fareLabel={estimate ? `GHS ${estimate.fareGhs.toFixed(2)}` : "—"}
+        selectedVehicle={
+          selectedVehicle
+            ? {
+                label: selectedVehicle.label,
+                seats: selectedVehicle.seats,
+                etaMinutes: selectedVehicle.etaMinutes,
+                priceGhs: selectedVehicle.priceGhs
+              }
+            : null
+        }
+        fareLabel={fareLabel}
         feedback={feedback}
         paymentMethod={paymentMethod}
         onPaymentMethodChange={setPaymentMethod}
@@ -858,7 +889,7 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
                 destination: activeRide?.ride.destination ?? destination,
                 paymentLabel: activeRide?.payment.provider ?? activeRide?.payment.method ?? "Mobile Money",
                 safetyPin: activeRide?.ride.safetyPin ?? null,
-                fareLabel: activeRide ? `GHS ${activeRide.ride.estimatedFareGhs.toFixed(2)}` : estimate ? `GHS ${estimate.fareGhs.toFixed(2)}` : "GHS 0.00",
+                fareLabel: activeRide ? `GHS ${activeRide.ride.estimatedFareGhs.toFixed(2)}` : fareSummaryLabel,
                 routeLabel: activeRide ? `${activeRide.ride.pickup} to ${activeRide.ride.destination}` : "Pending route",
                 authorizationUrl: activeRide?.payment.authorizationUrl ?? null
               }
@@ -987,7 +1018,7 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="font-bold text-lg">{estimate ? `GHS ${estimate.fareGhs.toFixed(2)}` : "—"}</div>
+                        <div className="font-bold text-lg">{fareLabel}</div>
                         <div className="mt-1 inline-block rounded-md bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">
                           Recommended
                         </div>
