@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CircleMarker, MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap } from "react-leaflet";
 import L from "leaflet";
 import { getDefaultLocation, resolveLocation } from "@/lib/location-catalog";
@@ -47,6 +47,79 @@ const passengerIcon = L.divIcon({
 
 const mapboxPublicToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN?.trim();
 const mapboxStyle = process.env.NEXT_PUBLIC_MAPBOX_STYLE_ID?.trim() || "mapbox/streets-v12";
+
+async function geocodePreviewLocation(query: string) {
+  const trimmed = query.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  if (mapboxPublicToken) {
+    const endpoint = new URL(
+      `https://api.mapbox.com/geocoding/v6/mapbox.places/${encodeURIComponent(trimmed)}.json`
+    );
+    endpoint.searchParams.set("access_token", mapboxPublicToken);
+    endpoint.searchParams.set("limit", "1");
+    endpoint.searchParams.set("proximity", "-0.187,5.6037");
+    endpoint.searchParams.set("country", "gh");
+
+    const response = await fetch(endpoint.toString());
+
+    if (response.ok) {
+      const payload = (await response.json()) as {
+        features?: Array<{
+          properties?: { full_address?: string; name?: string };
+          geometry?: { coordinates?: [number, number] };
+        }>;
+      };
+      const feature = payload.features?.[0];
+      const coordinates = feature?.geometry?.coordinates;
+
+      if (coordinates) {
+        return {
+          lat: coordinates[1],
+          lng: coordinates[0],
+          label: feature?.properties?.full_address ?? feature?.properties?.name ?? trimmed
+        };
+      }
+    }
+  }
+
+  const endpoint = new URL("https://nominatim.openstreetmap.org/search");
+  endpoint.searchParams.set("format", "jsonv2");
+  endpoint.searchParams.set("limit", "1");
+  endpoint.searchParams.set("countrycodes", "gh");
+  endpoint.searchParams.set("q", trimmed);
+
+  const response = await fetch(endpoint.toString(), {
+    headers: {
+      "User-Agent": "Qiilu/0.1 map-preview"
+    }
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const payload = (await response.json()) as Array<{
+    lat: string;
+    lon: string;
+    display_name: string;
+  }>;
+
+  const firstResult = payload[0];
+
+  if (!firstResult) {
+    return null;
+  }
+
+  return {
+    lat: Number(firstResult.lat),
+    lng: Number(firstResult.lon),
+    label: firstResult.display_name
+  };
+}
 
 function getTileConfig() {
   if (mapboxPublicToken) {
@@ -114,6 +187,81 @@ export default function PassengerLiveMap({
 }: PassengerLiveMapProps) {
   const tileConfig = useMemo(() => getTileConfig(), []);
   const fallbackLocation = useMemo(() => getDefaultLocation(), []);
+  const [previewPickupLocation, setPreviewPickupLocation] = useState<{ lat: number; lng: number; label: string } | null>(null);
+  const [previewDestinationLocation, setPreviewDestinationLocation] = useState<{ lat: number; lng: number; label: string } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!pickup?.trim() || pickupCoords || currentCoords) {
+      setPreviewPickupLocation(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const knownPickup = resolveLocation(pickup);
+
+    if (knownPickup) {
+      setPreviewPickupLocation(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    geocodePreviewLocation(pickup)
+      .then((location) => {
+        if (!cancelled) {
+          setPreviewPickupLocation(location);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPreviewPickupLocation(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentCoords, pickup, pickupCoords]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!destination?.trim() || destinationCoords) {
+      setPreviewDestinationLocation(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const knownDestination = resolveLocation(destination);
+
+    if (knownDestination) {
+      setPreviewDestinationLocation(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    geocodePreviewLocation(destination)
+      .then((location) => {
+        if (!cancelled) {
+          setPreviewDestinationLocation(location);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPreviewDestinationLocation(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [destination, destinationCoords]);
+
   const pickupLocation = useMemo(() => {
     if (pickupCoords) {
       return {
@@ -131,6 +279,10 @@ export default function PassengerLiveMap({
       }
     }
 
+    if (previewPickupLocation) {
+      return previewPickupLocation;
+    }
+
     if (currentCoords) {
       return {
         lat: currentCoords.lat,
@@ -140,7 +292,7 @@ export default function PassengerLiveMap({
     }
 
     return fallbackLocation;
-  }, [currentCoords, fallbackLocation, pickup, pickupCoords]);
+  }, [currentCoords, fallbackLocation, pickup, pickupCoords, previewPickupLocation]);
   const destinationLocation = useMemo(() => {
     if (destinationCoords) {
       return {
@@ -151,11 +303,11 @@ export default function PassengerLiveMap({
     }
 
     if (destination?.trim()) {
-      return resolveLocation(destination);
+      return resolveLocation(destination) ?? previewDestinationLocation;
     }
 
     return null;
-  }, [destination, destinationCoords]);
+  }, [destination, destinationCoords, previewDestinationLocation]);
 
   const center: [number, number] = destinationLocation
     ? [
@@ -166,12 +318,7 @@ export default function PassengerLiveMap({
 
   const zoom = destinationLocation ? 13 : 15;
 
-  const path = destinationLocation
-    ? route ?? [
-        [pickupLocation.lat, pickupLocation.lng],
-        [destinationLocation.lat, destinationLocation.lng]
-      ]
-    : null;
+  const path = route && route.length > 2 ? route : null;
 
   return (
     <div

@@ -31,6 +31,13 @@ import { clearSession, type SessionUser } from "@/lib/auth-session";
 import { fetchJson } from "@/lib/api";
 import { savePlace } from "@/lib/passenger-favourites";
 import { locationCatalog } from "@/lib/location-catalog";
+import {
+  createPlaceSearchSession,
+  retrievePlace,
+  suggestPlaces,
+  type PlaceSuggestion,
+  type ResolvedPlace
+} from "@/lib/place-search";
 import { getRealtimeUrl } from "@/lib/realtime";
 
 const PassengerLiveMap = dynamic(() => import("@/components/passenger-live-map"), { ssr: false });
@@ -105,6 +112,46 @@ type LiveLocation = {
   lng: number;
 };
 
+function LocationSuggestionMenu({
+  suggestions,
+  onSelect
+}: {
+  suggestions: PlaceSuggestion[];
+  onSelect: (suggestion: PlaceSuggestion) => void;
+}) {
+  if (suggestions.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="absolute left-0 right-0 top-[calc(100%+0.4rem)] z-30 overflow-hidden rounded-2xl border border-border bg-background shadow-xl dark:bg-[#171c22]">
+      {suggestions.map((suggestion) => (
+        <button
+          key={suggestion.id}
+          type="button"
+          className="flex w-full flex-col px-4 py-3 text-left transition-colors hover:bg-muted/50 dark:hover:bg-white/5"
+          onClick={() => onSelect(suggestion)}
+        >
+          <span className="text-sm font-semibold">{suggestion.name}</span>
+          <span className="text-xs text-muted-foreground">{suggestion.fullAddress}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function formatRouteEstimateError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return "We couldn't estimate this trip right now.";
+  }
+
+  if (error.message.toLowerCase().includes("could not calculate a real route")) {
+    return "We couldn't resolve one of those locations. Try a more specific pickup or destination.";
+  }
+
+  return error.message;
+}
+
 export function PassengerScreen({ user, token }: { user: SessionUser; token: string }) {
   const router = useRouter();
   const initials = useMemo(
@@ -131,6 +178,12 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
   const [incidentDescription, setIncidentDescription] = useState("");
   const [driverLocation, setDriverLocation] = useState<DriverLocationPayload | null>(null);
   const [liveLocation, setLiveLocation] = useState<LiveLocation | null>(null);
+  const [pickupSuggestions, setPickupSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [destinationSuggestions, setDestinationSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [pickupSelection, setPickupSelection] = useState<ResolvedPlace | null>(null);
+  const [destinationSelection, setDestinationSelection] = useState<ResolvedPlace | null>(null);
+  const [isResolvingPickupSuggestion, setIsResolvingPickupSuggestion] = useState(false);
+  const [isResolvingDestinationSuggestion, setIsResolvingDestinationSuggestion] = useState(false);
   const [isLoadingOptions, setIsLoadingOptions] = useState(true);
   const [isLoadingExperience, setIsLoadingExperience] = useState(true);
   const [isEstimating, setIsEstimating] = useState(false);
@@ -142,6 +195,8 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(true);
   const socketRef = useRef<WebSocket | null>(null);
   const searchTimeoutRef = useRef<number | null>(null);
+  const pickupSearchSessionRef = useRef(createPlaceSearchSession());
+  const destinationSearchSessionRef = useRef(createPlaceSearchSession());
   const quickDestinations = useMemo(
     () => locationCatalog.filter((location) => location.label !== "Current location, East Legon").slice(0, 4),
     []
@@ -204,6 +259,66 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
   }, [token]);
 
   useEffect(() => {
+    const query = pickup.trim();
+
+    if (!query || query.length < 3 || query === "Current location") {
+      setPickupSuggestions([]);
+      return;
+    }
+
+    if (pickupSelection && query === pickupSelection.fullAddress) {
+      setPickupSuggestions([]);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      suggestPlaces({
+        query,
+        sessionToken: pickupSearchSessionRef.current,
+        proximity: liveLocation
+      })
+        .then((results) => {
+          setPickupSuggestions(results);
+        })
+        .catch(() => {
+          setPickupSuggestions([]);
+        });
+    }, 250);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [liveLocation, pickup, pickupSelection]);
+
+  useEffect(() => {
+    const query = destination.trim();
+
+    if (!query || query.length < 3) {
+      setDestinationSuggestions([]);
+      return;
+    }
+
+    if (destinationSelection && query === destinationSelection.fullAddress) {
+      setDestinationSuggestions([]);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      suggestPlaces({
+        query,
+        sessionToken: destinationSearchSessionRef.current,
+        proximity: liveLocation
+      })
+        .then((results) => {
+          setDestinationSuggestions(results);
+        })
+        .catch(() => {
+          setDestinationSuggestions([]);
+        });
+    }, 250);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [destination, destinationSelection, liveLocation]);
+
+  useEffect(() => {
     if (!pickup.trim() || !destination.trim()) {
       setEstimate(null);
       return;
@@ -224,7 +339,15 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
           pickup,
           destination,
           vehicleId: selectedVehicleId,
-          pickupCoords: pickup === "Current location" && liveLocation ? liveLocation : null
+          pickupCoords:
+            pickupSelection
+              ? { lat: pickupSelection.lat, lng: pickupSelection.lng }
+              : pickup === "Current location" && liveLocation
+                ? liveLocation
+                : null,
+          destinationCoords: destinationSelection
+            ? { lat: destinationSelection.lat, lng: destinationSelection.lng }
+            : null
         })
       })
         .then((payload) => {
@@ -233,13 +356,13 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
         })
         .catch((error) => {
           setEstimate(null);
-          setFeedback(error instanceof Error ? error.message : "Could not estimate this trip.");
+          setFeedback(formatRouteEstimateError(error));
         })
         .finally(() => setIsEstimating(false));
     }, 450);
 
     return () => window.clearTimeout(timeoutId);
-  }, [destination, liveLocation, pickup, selectedVehicleId, token]);
+  }, [destination, destinationSelection, liveLocation, pickup, pickupSelection, selectedVehicleId, token]);
 
   useEffect(() => {
     const socket = new WebSocket(getRealtimeUrl(token));
@@ -381,7 +504,15 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
         body: JSON.stringify({
           pickup,
           destination,
-          pickupCoords: pickup === "Current location" && liveLocation ? liveLocation : null,
+          pickupCoords:
+            pickupSelection
+              ? { lat: pickupSelection.lat, lng: pickupSelection.lng }
+              : pickup === "Current location" && liveLocation
+                ? liveLocation
+                : null,
+          destinationCoords: destinationSelection
+            ? { lat: destinationSelection.lat, lng: destinationSelection.lng }
+            : null,
           vehicleId: selectedVehicle.id,
           vehicleType: selectedVehicle.label,
           paymentMethod,
@@ -401,7 +532,7 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
           : "Searching for available drivers near your pickup."
       );
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : "Ride request failed.");
+      setFeedback(formatRouteEstimateError(error));
     } finally {
       setIsBooking(false);
     }
@@ -474,20 +605,92 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
     }
 
     setPickup("Current location");
+    setPickupSelection(null);
+    setPickupSuggestions([]);
     setFeedback("Using your live location as pickup.");
   };
 
   const swapRoute = () => {
-    setPickup(destination);
-    setDestination(pickup === "Current location" ? "" : pickup);
+    const nextPickup = destination;
+    const nextDestination = pickup === "Current location" ? "" : pickup;
+    const nextPickupSelection = destinationSelection;
+    const nextDestinationSelection = pickup === "Current location" ? null : pickupSelection;
+
+    setPickup(nextPickup);
+    setDestination(nextDestination);
+    setPickupSelection(nextPickupSelection);
+    setDestinationSelection(nextDestinationSelection);
+    setPickupSuggestions([]);
+    setDestinationSuggestions([]);
   };
 
   const chooseQuickDestination = (label: string) => {
     if (!pickup.trim() && liveLocation) {
       setPickup("Current location");
+      setPickupSelection(null);
     }
 
     setDestination(label);
+    setDestinationSelection(null);
+    setDestinationSuggestions([]);
+  };
+
+  const handlePickupInputChange = (value: string) => {
+    setPickup(value);
+    setPickupSuggestions([]);
+
+    if (pickupSelection && value.trim() !== pickupSelection.fullAddress) {
+      setPickupSelection(null);
+    }
+  };
+
+  const handleDestinationInputChange = (value: string) => {
+    setDestination(value);
+    setDestinationSuggestions([]);
+
+    if (destinationSelection && value.trim() !== destinationSelection.fullAddress) {
+      setDestinationSelection(null);
+    }
+  };
+
+  const selectPickupSuggestion = async (suggestion: PlaceSuggestion) => {
+    setIsResolvingPickupSuggestion(true);
+    setFeedback(null);
+
+    try {
+      const place = await retrievePlace({
+        suggestion,
+        sessionToken: pickupSearchSessionRef.current
+      });
+      setPickup(place.fullAddress);
+      setPickupSelection(place);
+      setPickupSuggestions([]);
+      pickupSearchSessionRef.current = createPlaceSearchSession();
+    } catch {
+      setFeedback("We couldn't pin that pickup yet. Try another result.");
+    } finally {
+      setIsResolvingPickupSuggestion(false);
+    }
+  };
+
+  const selectDestinationSuggestion = async (suggestion: PlaceSuggestion) => {
+    setIsResolvingDestinationSuggestion(true);
+    setFeedback(null);
+
+    try {
+      const place = await retrievePlace({
+        suggestion,
+        sessionToken: destinationSearchSessionRef.current
+      });
+      setDestination(place.fullAddress);
+      setDestinationSelection(place);
+      setDestinationSuggestions([]);
+      destinationSearchSessionRef.current = createPlaceSearchSession();
+    } catch {
+      setFeedback("We couldn't pin that destination yet. Try another result.");
+    } finally {
+      setIsResolvingDestinationSuggestion(false);
+    }
   };
 
   const bookmarkPlace = (label: string, kind: "pickup" | "destination") => {
@@ -502,12 +705,19 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
 
   const routePath = estimate?.route;
   const pickupCoords =
-    pickup === "Current location" && liveLocation
+    pickupSelection
+      ? { lat: pickupSelection.lat, lng: pickupSelection.lng }
+      : pickup === "Current location" && liveLocation
       ? liveLocation
       : estimate?.pickup
         ? { lat: estimate.pickup.lat, lng: estimate.pickup.lng }
         : null;
-  const destinationCoords = estimate?.destination ? { lat: estimate.destination.lat, lng: estimate.destination.lng } : null;
+  const destinationCoords =
+    destinationSelection
+      ? { lat: destinationSelection.lat, lng: destinationSelection.lng }
+      : estimate?.destination
+        ? { lat: estimate.destination.lat, lng: estimate.destination.lng }
+        : null;
   const mobileStep =
     activeRide?.ride.status === "SEARCHING"
       ? "searching"
@@ -676,11 +886,17 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
                     <div className="absolute bottom-10 left-[31px] top-10 w-0.5 bg-border" />
                     <div className="relative z-10 mb-4 flex items-center gap-4">
                       <div className="h-3 w-3 rounded-full bg-primary ring-4 ring-card" />
-                      <Input value={pickup} onChange={(event) => setPickup(event.target.value)} placeholder="Pickup location" className="h-12 border-transparent bg-muted/50 dark:bg-white/5" />
+                      <div className="relative flex-1">
+                        <Input value={pickup} onChange={(event) => handlePickupInputChange(event.target.value)} placeholder="Pickup location" className="h-12 border-transparent bg-muted/50 dark:bg-white/5" />
+                        <LocationSuggestionMenu suggestions={pickupSuggestions} onSelect={selectPickupSuggestion} />
+                      </div>
                     </div>
                     <div className="relative z-10 flex items-center gap-4">
                       <div className="h-3 w-3 rounded-full bg-foreground ring-4 ring-card" />
-                      <Input value={destination} onChange={(event) => setDestination(event.target.value)} placeholder="Destination" className="h-12 border-transparent bg-muted/50 dark:bg-white/5" />
+                      <div className="relative flex-1">
+                        <Input value={destination} onChange={(event) => handleDestinationInputChange(event.target.value)} placeholder="Destination" className="h-12 border-transparent bg-muted/50 dark:bg-white/5" />
+                        <LocationSuggestionMenu suggestions={destinationSuggestions} onSelect={selectDestinationSuggestion} />
+                      </div>
                     </div>
                   </div>
 
@@ -782,6 +998,7 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
                   </div>
 
                   {feedback ? <div className="mt-4 rounded-2xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground dark:bg-white/5">{feedback}</div> : null}
+                  {(isResolvingPickupSuggestion || isResolvingDestinationSuggestion) ? <div className="mt-4 rounded-2xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground dark:bg-white/5">Resolving the selected place on the map...</div> : null}
 
                   <Button size="lg" className="mt-auto h-14 w-full rounded-xl text-lg" disabled={!canBook} onClick={createRide}>
                     {isBooking ? "Requesting ride..." : "Request Qiilu Car"}
@@ -897,8 +1114,14 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
         showDropoffPin={mobileStep === "riding" && Boolean(destination)}
         pickup={pickup}
         destination={destination}
-        onPickupChange={setPickup}
-        onDestinationChange={setDestination}
+        onPickupChange={handlePickupInputChange}
+        onDestinationChange={handleDestinationInputChange}
+        pickupSuggestions={pickupSuggestions}
+        destinationSuggestions={destinationSuggestions}
+        onSelectPickupSuggestion={selectPickupSuggestion}
+        onSelectDestinationSuggestion={selectDestinationSuggestion}
+        isResolvingPickupSuggestion={isResolvingPickupSuggestion}
+        isResolvingDestinationSuggestion={isResolvingDestinationSuggestion}
         onSwapRoute={swapRoute}
         quickDestinations={quickDestinations.map((location) => location.label)}
         onQuickDestination={chooseQuickDestination}

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import Image from "next/image";
+import type { PlaceSuggestion } from "@/lib/place-search";
 import {
   ArrowDownUp,
   Bell,
@@ -51,6 +52,12 @@ export function PassengerMobileExact({
   destination,
   onPickupChange,
   onDestinationChange,
+  pickupSuggestions,
+  destinationSuggestions,
+  onSelectPickupSuggestion,
+  onSelectDestinationSuggestion,
+  isResolvingPickupSuggestion = false,
+  isResolvingDestinationSuggestion = false,
   onSwapRoute,
   quickDestinations,
   onQuickDestination,
@@ -76,6 +83,12 @@ export function PassengerMobileExact({
   destination: string;
   onPickupChange: (value: string) => void;
   onDestinationChange: (value: string) => void;
+  pickupSuggestions?: PlaceSuggestion[];
+  destinationSuggestions?: PlaceSuggestion[];
+  onSelectPickupSuggestion: (suggestion: PlaceSuggestion) => void;
+  onSelectDestinationSuggestion: (suggestion: PlaceSuggestion) => void;
+  isResolvingPickupSuggestion?: boolean;
+  isResolvingDestinationSuggestion?: boolean;
   onSwapRoute: () => void;
   quickDestinations: string[];
   onQuickDestination: (label: string) => void;
@@ -92,6 +105,9 @@ export function PassengerMobileExact({
   initials: string;
   rideSummary: RideSummary | null;
 }) {
+  const safePickupSuggestions = pickupSuggestions ?? [];
+  const safeDestinationSuggestions = destinationSuggestions ?? [];
+
   return (
     <div className="isolate relative h-[100svh] min-h-[100svh] w-full overflow-hidden bg-background text-foreground font-sans sm:mx-auto sm:max-w-[430px] sm:rounded-[2rem] sm:border-8 sm:border-gray-900 sm:shadow-2xl">
       <div className="absolute inset-0 bg-[#e5e3df] dark:bg-[#1a1c1e] z-0 overflow-hidden">
@@ -144,12 +160,46 @@ export function PassengerMobileExact({
 
                 <div className="flex items-center gap-3 relative z-10 mb-4">
                   <div className="w-2.5 h-2.5 rounded-full bg-primary shrink-0 ring-4 ring-background" />
-                  <Input value={pickup} onChange={(event) => onPickupChange(event.target.value)} placeholder="Pickup location" className="h-12 bg-background border-border/50 text-sm font-medium" />
+                  <div className="relative flex-1">
+                    <Input value={pickup} onChange={(event) => onPickupChange(event.target.value)} placeholder="Pickup location" className="h-12 bg-background border-border/50 text-sm font-medium" />
+                    {safePickupSuggestions.length > 0 ? (
+                      <div className="absolute left-0 right-0 top-[calc(100%+0.4rem)] z-30 overflow-hidden rounded-2xl border border-border bg-background shadow-xl">
+                        {safePickupSuggestions.map((suggestion) => (
+                          <button
+                            key={suggestion.id}
+                            type="button"
+                            className="flex w-full flex-col px-4 py-3 text-left transition-colors hover:bg-muted/50"
+                            onClick={() => onSelectPickupSuggestion(suggestion)}
+                          >
+                            <span className="text-sm font-semibold">{suggestion.name}</span>
+                            <span className="text-xs text-muted-foreground">{suggestion.fullAddress}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-3 relative z-10">
                   <div className="w-2.5 h-2.5 rounded-full bg-foreground shrink-0 ring-4 ring-background" />
-                  <Input value={destination} onChange={(event) => onDestinationChange(event.target.value)} placeholder="Where to?" className="h-12 bg-background border-border/50 text-sm font-medium" />
+                  <div className="relative flex-1">
+                    <Input value={destination} onChange={(event) => onDestinationChange(event.target.value)} placeholder="Where to?" className="h-12 bg-background border-border/50 text-sm font-medium" />
+                    {safeDestinationSuggestions.length > 0 ? (
+                      <div className="absolute left-0 right-0 top-[calc(100%+0.4rem)] z-30 overflow-hidden rounded-2xl border border-border bg-background shadow-xl">
+                        {safeDestinationSuggestions.map((suggestion) => (
+                          <button
+                            key={suggestion.id}
+                            type="button"
+                            className="flex w-full flex-col px-4 py-3 text-left transition-colors hover:bg-muted/50"
+                            onClick={() => onSelectDestinationSuggestion(suggestion)}
+                          >
+                            <span className="text-sm font-semibold">{suggestion.name}</span>
+                            <span className="text-xs text-muted-foreground">{suggestion.fullAddress}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
 
                 <button type="button" onClick={onSwapRoute} className="absolute right-6 top-1/2 -translate-y-1/2 w-8 h-8 bg-background border border-border rounded-full flex items-center justify-center shadow-sm z-20">
@@ -199,6 +249,11 @@ export function PassengerMobileExact({
               </div>
 
               {feedback ? <div className="mb-4 rounded-2xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground">{feedback}</div> : null}
+              {(isResolvingPickupSuggestion || isResolvingDestinationSuggestion) ? (
+                <div className="mb-4 rounded-2xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+                  Resolving the selected place on the map...
+                </div>
+              ) : null}
 
               <div className="flex gap-4">
                 <button type="button" onClick={() => onPaymentMethodChange("MOMO")} className={`flex items-center justify-center gap-2 w-1/3 h-14 rounded-2xl font-semibold border ${paymentMethod === "MOMO" ? "border-primary bg-primary/10 text-primary" : "bg-muted/50 border-border"}`}>

@@ -95,6 +95,7 @@ passengerRouter.post("/route-estimate", requireAuth, async (request: Authenticat
     destination?: string;
     vehicleId?: string;
     pickupCoords?: { lat?: number; lng?: number } | null;
+    destinationCoords?: { lat?: number; lng?: number } | null;
   };
 
   if (!body.pickup || !body.destination) {
@@ -127,6 +128,14 @@ passengerRouter.post("/route-estimate", requireAuth, async (request: Authenticat
               lat: body.pickupCoords.lat,
               lng: body.pickupCoords.lng,
               label: body.pickup
+            }
+          : null,
+      destinationPoint:
+        typeof body.destinationCoords?.lat === "number" && typeof body.destinationCoords?.lng === "number"
+          ? {
+              lat: body.destinationCoords.lat,
+              lng: body.destinationCoords.lng,
+              label: body.destination
             }
           : null,
       fareProfile: {
@@ -360,6 +369,7 @@ passengerRouter.post("/rides", requireAuth, async (request: AuthenticatedRequest
     pickup?: string;
     destination?: string;
     pickupCoords?: { lat?: number; lng?: number } | null;
+    destinationCoords?: { lat?: number; lng?: number } | null;
     vehicleId?: string;
     vehicleType?: string;
     paymentMethod?: "MOMO" | "CASH" | string;
@@ -393,6 +403,13 @@ passengerRouter.post("/rides", requireAuth, async (request: AuthenticatedRequest
         ? {
             lat: body.pickupCoords.lat,
             lng: body.pickupCoords.lng
+          }
+        : null,
+    destinationCoords:
+      typeof body.destinationCoords?.lat === "number" && typeof body.destinationCoords?.lng === "number"
+        ? {
+            lat: body.destinationCoords.lat,
+            lng: body.destinationCoords.lng
           }
         : null,
     vehicleId: body.vehicleId,

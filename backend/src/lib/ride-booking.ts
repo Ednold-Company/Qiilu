@@ -11,6 +11,7 @@ export type CreateRideBookingInput = {
   pickup: string;
   destination: string;
   pickupCoords?: { lat: number; lng: number } | null;
+  destinationCoords?: { lat: number; lng: number } | null;
   vehicleId?: string;
   vehicleType?: string;
   paymentMethod: RidePaymentMethod;
@@ -92,6 +93,13 @@ export async function createRideBooking(input: CreateRideBookingInput) {
           lat: input.pickupCoords.lat,
           lng: input.pickupCoords.lng,
           label: input.pickup
+        }
+      : null,
+    destinationPoint: input.destinationCoords
+      ? {
+          lat: input.destinationCoords.lat,
+          lng: input.destinationCoords.lng,
+          label: input.destination
         }
       : null,
     fareProfile: {

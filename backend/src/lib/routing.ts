@@ -31,6 +31,21 @@ type OptionalRoutePoint = {
 };
 
 const mapboxToken = process.env.MAPBOX_ACCESS_TOKEN;
+const routingDebugEnabled = (process.env.ROUTING_DEBUG ?? "").trim().toLowerCase() === "true";
+
+function logRoutingDebug(event: string, details: Record<string, unknown>) {
+  if (!routingDebugEnabled) {
+    return;
+  }
+
+  console.info(
+    JSON.stringify({
+      scope: "qiilu.routing",
+      event,
+      ...details
+    })
+  );
+}
 
 function round(value: number, digits = 2) {
   return Number(value.toFixed(digits));
@@ -104,8 +119,18 @@ async function geocodeWithMapbox(query: string) {
   const coordinates = feature?.geometry?.coordinates;
 
   if (!feature || !coordinates) {
+    logRoutingDebug("mapbox.geocode.empty", {
+      query
+    });
     return null;
   }
+
+  logRoutingDebug("mapbox.geocode.success", {
+    query,
+    label: feature.properties?.full_address ?? feature.properties?.name ?? query,
+    lat: coordinates[1],
+    lng: coordinates[0]
+  });
 
   return {
     lat: coordinates[1],
@@ -140,8 +165,18 @@ async function geocodeWithNominatim(query: string) {
   const firstResult = payload[0];
 
   if (!firstResult) {
+    logRoutingDebug("nominatim.geocode.empty", {
+      query
+    });
     return null;
   }
+
+  logRoutingDebug("nominatim.geocode.success", {
+    query,
+    label: firstResult.display_name,
+    lat: Number(firstResult.lat),
+    lng: Number(firstResult.lon)
+  });
 
   return {
     lat: Number(firstResult.lat),
@@ -207,6 +242,11 @@ async function routeWithMapbox(start: RoutePoint, end: RoutePoint, fareProfile?:
   });
 
   if (!response.ok) {
+    logRoutingDebug("mapbox.route.error", {
+      status: response.status,
+      pickup: start.label,
+      destination: end.label
+    });
     throw new Error(`Mapbox directions failed with ${response.status}`);
   }
 
@@ -221,11 +261,23 @@ async function routeWithMapbox(start: RoutePoint, end: RoutePoint, fareProfile?:
   const route = payload.routes?.[0];
 
   if (!route?.geometry?.coordinates?.length) {
+    logRoutingDebug("mapbox.route.empty", {
+      pickup: start.label,
+      destination: end.label
+    });
     return null;
   }
 
   const distanceKm = round(route.distance / 1000);
   const durationMinutes = Math.max(1, Math.round(route.duration / 60));
+
+  logRoutingDebug("mapbox.route.success", {
+    pickup: start.label,
+    destination: end.label,
+    distanceKm,
+    durationMinutes,
+    geometryPoints: route.geometry.coordinates.length
+  });
 
   return {
     provider: "mapbox" as const,
@@ -246,6 +298,11 @@ async function routeWithOsrm(start: RoutePoint, end: RoutePoint, fareProfile?: F
   const response = await fetch(endpoint);
 
   if (!response.ok) {
+    logRoutingDebug("osrm.route.error", {
+      status: response.status,
+      pickup: start.label,
+      destination: end.label
+    });
     throw new Error(`OSRM directions failed with ${response.status}`);
   }
 
@@ -260,11 +317,23 @@ async function routeWithOsrm(start: RoutePoint, end: RoutePoint, fareProfile?: F
   const route = payload.routes?.[0];
 
   if (!route?.geometry?.coordinates?.length) {
+    logRoutingDebug("osrm.route.empty", {
+      pickup: start.label,
+      destination: end.label
+    });
     return null;
   }
 
   const distanceKm = round(route.distance / 1000);
   const durationMinutes = Math.max(1, Math.round(route.duration / 60));
+
+  logRoutingDebug("osrm.route.success", {
+    pickup: start.label,
+    destination: end.label,
+    distanceKm,
+    durationMinutes,
+    geometryPoints: route.geometry.coordinates.length
+  });
 
   return {
     provider: "osrm" as const,
@@ -318,6 +387,11 @@ export async function estimateRoute(
         };
       }
     } catch {
+      logRoutingDebug("mapbox.route.fallback", {
+        pickup: pickup.label,
+        destination: destination.label,
+        reason: "mapbox_failed_or_unavailable"
+      });
       // Fall through to OSRM before using the straight-line catalog fallback.
     }
   }
@@ -333,10 +407,21 @@ export async function estimateRoute(
       };
     }
   } catch {
+    logRoutingDebug("osrm.route.fallback", {
+      pickup: pickup.label,
+      destination: destination.label,
+      reason: "osrm_failed_or_unavailable"
+    });
+
     if (!knownPickup || !knownDestination) {
       throw new Error("Live routing is unavailable for this trip right now");
     }
   }
+
+  logRoutingDebug("catalog.route.fallback", {
+    pickup: pickup.label,
+    destination: destination.label
+  });
 
   return {
     ...routeFromCatalog(pickup, destination, options?.fareProfile),
