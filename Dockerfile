@@ -5,7 +5,7 @@ COPY backend/prisma ./prisma
 COPY backend/prisma.config.ts ./prisma.config.ts
 ARG DATABASE_URL=postgresql://postgres:postgres@localhost:5432/qiilu?sslmode=disable
 ENV DATABASE_URL=${DATABASE_URL}
-RUN npm ci
+RUN npm install --include=dev --no-audit --no-fund
 RUN npx prisma generate
 
 FROM node:22-alpine AS builder
