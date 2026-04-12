@@ -337,6 +337,10 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
       : selectedVehicle
         ? `From GHS ${selectedVehicle.priceGhs.toFixed(2)}`
         : "Waiting for route";
+  const routeNotice =
+    estimate?.provider === "catalog"
+      ? "Live road routing is unavailable for this trip right now, so Qiilu is showing a straight-line backup estimate."
+      : null;
 
   const saveExperience = async () => {
     setIsSavingExperience(true);
@@ -603,15 +607,24 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
                   </div>
                   <div>
                     <div className="font-bold">
-                      {estimate ? `${estimate.distanceKm.toFixed(1)} km live estimate` : "Enter a route to estimate"}
+                      {estimate
+                        ? estimate.provider === "catalog"
+                          ? `${estimate.distanceKm.toFixed(1)} km backup estimate`
+                          : `${estimate.distanceKm.toFixed(1)} km live estimate`
+                        : "Enter a route to estimate"}
                     </div>
                     <div className="text-sm text-muted-foreground">
                       {estimate
-                        ? `${estimate.durationMinutes} min • ${estimate.provider}`
+                        ? `${estimate.durationMinutes} min • ${estimate.provider}${estimate.provider === "catalog" ? " fallback" : ""}`
                         : liveLocation
                           ? "Your live location is pinned. Add a destination to calculate the route."
                           : "Allow location access or enter a pickup and destination to start routing."}
                     </div>
+                    {routeNotice ? (
+                      <div className="mt-3 rounded-xl border border-amber-300/40 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                        {routeNotice}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
                 {driverLocation ? (
@@ -847,10 +860,11 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
                     </Button>
                   </div>
 
-                  {feedback ? <div className="mt-4 rounded-2xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground dark:bg-white/5">{feedback}</div> : null}
+              {feedback ? <div className="mt-4 rounded-2xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground dark:bg-white/5">{feedback}</div> : null}
+              {routeNotice && !feedback ? <div className="mt-4 rounded-2xl border border-amber-300/40 bg-amber-500/10 p-4 text-sm font-medium text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">{routeNotice}</div> : null}
 
-                  <Button variant="outline" className="mt-auto h-12 rounded-xl" onClick={() => { setActiveRide(null); setDriverLocation(null); }}>
-                    Book another ride
+              <Button variant="outline" className="mt-auto h-12 rounded-xl" onClick={() => { setActiveRide(null); setDriverLocation(null); }}>
+                Book another ride
                   </Button>
                 </div>
               )}
@@ -917,7 +931,8 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
                 safetyPin: activeRide?.ride.safetyPin ?? null,
                 fareLabel: activeRide ? `GHS ${activeRide.ride.estimatedFareGhs.toFixed(2)}` : fareSummaryLabel,
                 routeLabel: activeRide ? `${activeRide.ride.pickup} to ${activeRide.ride.destination}` : "Pending route",
-                authorizationUrl: activeRide?.payment.authorizationUrl ?? null
+                authorizationUrl: activeRide?.payment.authorizationUrl ?? null,
+                routeNotice
               }
             : null
         }

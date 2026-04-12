@@ -12,16 +12,20 @@ export const locationCatalog: KnownLocation[] = [
   { label: "East Legon Hills", lat: 5.6912, lng: -0.1044 }
 ];
 
+export function getDefaultLocation() {
+  return locationCatalog[0];
+}
+
 export function resolveLocation(query: string) {
   const normalized = query.trim().toLowerCase();
 
   if (!normalized) {
-    return locationCatalog[0];
+    return getDefaultLocation();
   }
 
   return (
     locationCatalog.find((location) => normalized.includes(location.label.toLowerCase())) ??
     locationCatalog.find((location) => location.label.toLowerCase().includes(normalized)) ??
-    locationCatalog[0]
+    null
   );
 }

@@ -3,7 +3,7 @@
 import { useEffect, useMemo } from "react";
 import { CircleMarker, MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap } from "react-leaflet";
 import L from "leaflet";
-import { resolveLocation } from "@/lib/location-catalog";
+import { getDefaultLocation, resolveLocation } from "@/lib/location-catalog";
 
 type PassengerLiveMapProps = {
   pickup?: string;
@@ -113,6 +113,7 @@ export default function PassengerLiveMap({
   backgroundMode = false
 }: PassengerLiveMapProps) {
   const tileConfig = useMemo(() => getTileConfig(), []);
+  const fallbackLocation = useMemo(() => getDefaultLocation(), []);
   const pickupLocation = useMemo(() => {
     if (pickupCoords) {
       return {
@@ -123,7 +124,11 @@ export default function PassengerLiveMap({
     }
 
     if (pickup?.trim()) {
-      return resolveLocation(pickup);
+      const knownPickup = resolveLocation(pickup);
+
+      if (knownPickup) {
+        return knownPickup;
+      }
     }
 
     if (currentCoords) {
@@ -134,8 +139,8 @@ export default function PassengerLiveMap({
       };
     }
 
-    return resolveLocation("");
-  }, [currentCoords, pickup, pickupCoords]);
+    return fallbackLocation;
+  }, [currentCoords, fallbackLocation, pickup, pickupCoords]);
   const destinationLocation = useMemo(() => {
     if (destinationCoords) {
       return {

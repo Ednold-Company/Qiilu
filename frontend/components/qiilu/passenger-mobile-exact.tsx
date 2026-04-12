@@ -38,6 +38,7 @@ type RideSummary = {
   fareLabel: string;
   routeLabel: string;
   authorizationUrl?: string | null;
+  routeNotice?: string | null;
 };
 
 export function PassengerMobileExact({
@@ -286,6 +287,11 @@ export function PassengerMobileExact({
                   <div className="flex items-center justify-between"><span className="text-muted-foreground">Payment</span><strong>{rideSummary?.paymentLabel ?? "Mobile Money"}</strong></div>
                   <div className="flex items-center justify-between"><span className="text-muted-foreground">Route</span><strong>{rideSummary?.routeLabel ?? "Pending route"}</strong></div>
                 </div>
+                {rideSummary?.routeNotice ? (
+                  <div className="mt-4 rounded-xl border border-amber-300/40 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                    {rideSummary.routeNotice}
+                  </div>
+                ) : null}
                 {rideSummary?.authorizationUrl ? (
                   <Button variant="outline" className="mt-4 h-11 w-full rounded-xl" onClick={() => window.open(rideSummary.authorizationUrl ?? "", "_blank", "noopener,noreferrer")}>
                     Continue MoMo approval
