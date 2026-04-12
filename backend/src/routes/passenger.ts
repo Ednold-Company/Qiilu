@@ -67,7 +67,8 @@ passengerRouter.get("/vehicle-options", async (_request, response) => {
   const availableDrivers = await prisma.user.findMany({
     where: {
       role: "DRIVER",
-      availability: "AVAILABLE"
+      availability: "AVAILABLE",
+      kycStatus: "APPROVED"
     },
     select: {
       id: true

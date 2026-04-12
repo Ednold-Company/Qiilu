@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Car,
@@ -28,6 +29,7 @@ import {
 import { fetchJson } from "@/lib/api";
 import { clearSession, type SessionUser } from "@/lib/auth-session";
 import { getSavedPlaces, removeSavedPlace, type SavedPlace } from "@/lib/passenger-favourites";
+import { readImageFileAsDataUrl } from "@/lib/profile-image";
 import { useTheme } from "@/lib/theme";
 
 type RideItem = {
@@ -51,6 +53,7 @@ type MeResponse = {
     name: string;
     phone: string;
     email?: string | null;
+    profileImageUrl?: string | null;
     role: "PASSENGER";
     preferredPayment?: string | null;
     momoProvider?: string | null;
@@ -542,6 +545,8 @@ export function PassengerAccountMobilePage({ sessionUser }: { sessionUser: Sessi
   const [user, setUser] = useState<MeResponse["user"] | null>(null);
   const [rides, setRides] = useState<RideItem[]>([]);
   const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>([]);
+  const [profileMessage, setProfileMessage] = useState<string | null>(null);
+  const [uploadingProfileImage, setUploadingProfileImage] = useState(false);
 
   useEffect(() => {
     fetchJson<MeResponse>("/auth/me")
@@ -569,6 +574,29 @@ export function PassengerAccountMobilePage({ sessionUser }: { sessionUser: Sessi
       });
   };
 
+  const uploadProfileImage = async (file: File | null) => {
+    if (!file) {
+      return;
+    }
+
+    setUploadingProfileImage(true);
+    setProfileMessage(null);
+
+    try {
+      const profileImageUrl = await readImageFileAsDataUrl(file);
+      const payload = await fetchJson<MeResponse & { message: string }>("/auth/profile", {
+        method: "PUT",
+        body: JSON.stringify({ profileImageUrl })
+      });
+      setUser(payload.user);
+      setProfileMessage("Profile image updated.");
+    } catch (error) {
+      setProfileMessage(error instanceof Error ? error.message : "Could not update profile image.");
+    } finally {
+      setUploadingProfileImage(false);
+    }
+  };
+
   const links = [
     { icon: CreditCard, label: "Payment Methods", href: "/passenger/payment" },
     { icon: Heart, label: "Favourites", href: "/passenger/favourites" },
@@ -580,8 +608,12 @@ export function PassengerAccountMobilePage({ sessionUser }: { sessionUser: Sessi
     <MobileShell title="Account" active="account">
       <div className="mb-6 rounded-[2rem] border border-border bg-card p-6 shadow-sm">
         <div className="mb-6 flex items-center gap-5">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-tr from-primary to-secondary text-3xl font-extrabold text-white shadow-lg shadow-primary/20">
-            {initials}
+          <div className="relative flex h-20 w-20 items-center justify-center overflow-hidden rounded-full bg-gradient-to-tr from-primary to-secondary text-3xl font-extrabold text-white shadow-lg shadow-primary/20">
+            {user?.profileImageUrl ? (
+              <Image src={user.profileImageUrl} alt={`${sessionUser.name} profile`} fill className="object-cover" unoptimized />
+            ) : (
+              initials
+            )}
           </div>
           <div className="min-w-0">
             <h2 className="truncate text-2xl font-bold tracking-tight">{sessionUser.name}</h2>
@@ -592,6 +624,19 @@ export function PassengerAccountMobilePage({ sessionUser }: { sessionUser: Sessi
               <CheckCircle2 className="h-3 w-3" /> {user?.kycStatus ?? "PENDING"}
             </div>
           </div>
+        </div>
+
+        <div className="mb-5">
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground">
+            {uploadingProfileImage ? "Uploading..." : "Upload photo"}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/jpg,image/webp"
+              className="hidden"
+              onChange={(event) => void uploadProfileImage(event.target.files?.[0] ?? null)}
+            />
+          </label>
+          {profileMessage ? <div className="mt-3 text-sm text-muted-foreground">{profileMessage}</div> : null}
         </div>
 
         <div className="grid grid-cols-3 gap-4 border-t border-border pt-6">

@@ -9,6 +9,26 @@ import { requireAuth, type AuthenticatedRequest } from "../middleware/auth.js";
 
 export const authRouter = Router();
 
+const sessionUserSelect = {
+  id: true,
+  name: true,
+  phone: true,
+  email: true,
+  profileImageUrl: true,
+  role: true,
+  preferredPayment: true,
+  momoProvider: true,
+  trustedContacts: true,
+  lowBandwidthMode: true,
+  safetyShareEnabled: true,
+  kycStatus: true,
+  availability: true
+} as const;
+
+function isValidProfileImageDataUrl(value: string) {
+  return /^data:image\/(png|jpeg|jpg|webp);base64,[a-z0-9+/=]+$/i.test(value.trim());
+}
+
 function setAuthCookies(
   response: {
     cookie: (name: string, value: string, options: Record<string, unknown>) => void;
@@ -50,6 +70,7 @@ async function issueSession(response: {
   name: string;
   phone: string;
   email?: string | null;
+  profileImageUrl?: string | null;
   role: UserRole;
 }) {
   const token = signAuthToken({
@@ -67,6 +88,7 @@ async function issueSession(response: {
       name: user.name,
       phone: user.phone,
       email: user.email ?? null,
+      profileImageUrl: user.profileImageUrl ?? null,
       role: user.role
     }
   };
@@ -352,7 +374,8 @@ authRouter.post("/logout", (_request, response) => {
 
 authRouter.get("/me", requireAuth, async (request: AuthenticatedRequest, response) => {
   const user = await prisma.user.findUnique({
-    where: { id: request.auth?.userId }
+    where: { id: request.auth?.userId },
+    select: sessionUserSelect
   });
 
   if (!user) {
@@ -366,6 +389,64 @@ authRouter.get("/me", requireAuth, async (request: AuthenticatedRequest, respons
       name: user.name,
       phone: user.phone,
       email: user.email,
+      profileImageUrl: user.profileImageUrl,
+      role: user.role,
+      preferredPayment: user.preferredPayment,
+      momoProvider: user.momoProvider,
+      trustedContacts: Array.isArray(user.trustedContacts) ? user.trustedContacts : [],
+      lowBandwidthMode: user.lowBandwidthMode,
+      safetyShareEnabled: user.safetyShareEnabled,
+      kycStatus: user.kycStatus,
+      availability: user.availability
+    }
+  });
+});
+
+authRouter.put("/profile", requireAuth, async (request: AuthenticatedRequest, response) => {
+  const body = request.body as {
+    name?: string;
+    profileImageUrl?: string | null;
+  };
+
+  const nextName = body.name?.trim();
+  const nextProfileImage = typeof body.profileImageUrl === "string" ? body.profileImageUrl.trim() : body.profileImageUrl;
+
+  if (nextName !== undefined && nextName.length > 0 && nextName.length < 2) {
+    response.status(400).json({ message: "Name must be at least 2 characters" });
+    return;
+  }
+
+  if (typeof nextProfileImage === "string" && nextProfileImage.length > 0) {
+    if (!isValidProfileImageDataUrl(nextProfileImage)) {
+      response.status(400).json({ message: "Profile image must be a valid PNG, JPG, JPEG, or WebP upload" });
+      return;
+    }
+
+    if (nextProfileImage.length > 2_000_000) {
+      response.status(400).json({ message: "Profile image is too large. Use a smaller image." });
+      return;
+    }
+  }
+
+  const user = await prisma.user.update({
+    where: { id: request.auth?.userId },
+    data: {
+      ...(nextName ? { name: nextName } : {}),
+      ...(body.profileImageUrl !== undefined
+        ? { profileImageUrl: nextProfileImage ? nextProfileImage : null }
+        : {})
+    },
+    select: sessionUserSelect
+  });
+
+  response.json({
+    message: "Profile updated",
+    user: {
+      id: user.id,
+      name: user.name,
+      phone: user.phone,
+      email: user.email,
+      profileImageUrl: user.profileImageUrl,
       role: user.role,
       preferredPayment: user.preferredPayment,
       momoProvider: user.momoProvider,

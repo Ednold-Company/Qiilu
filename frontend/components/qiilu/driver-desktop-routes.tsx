@@ -34,6 +34,7 @@ import {
 import { fetchJson } from "@/lib/api";
 import { clearSession, type SessionUser } from "@/lib/auth-session";
 import { shouldUpdateLiveCoords } from "@/lib/map-motion";
+import { readImageFileAsDataUrl } from "@/lib/profile-image";
 import { useTheme } from "@/lib/theme";
 
 const PassengerLiveMap = dynamic(() => import("@/components/passenger-live-map"), { ssr: false });
@@ -98,6 +99,7 @@ type MeResponse = {
     name: string;
     phone: string;
     email?: string | null;
+    profileImageUrl?: string | null;
     role: "DRIVER";
     kycStatus?: string | null;
     availability?: "OFFLINE" | "AVAILABLE" | "ON_TRIP";
@@ -1081,6 +1083,8 @@ export function DriverAccountDesktopPage({ user }: { user: SessionUser }) {
   const [documentUrl, setDocumentUrl] = useState("");
   const [kycMessage, setKycMessage] = useState<string | null>(null);
   const [submittingKyc, setSubmittingKyc] = useState(false);
+  const [profileMessage, setProfileMessage] = useState<string | null>(null);
+  const [uploadingProfileImage, setUploadingProfileImage] = useState(false);
 
   const loadAccount = async () => {
     const [mePayload, walletPayload, kycPayload] = await Promise.all([
@@ -1108,6 +1112,25 @@ export function DriverAccountDesktopPage({ user }: { user: SessionUser }) {
     .join("")
     .slice(0, 2)
     .toUpperCase();
+
+  const uploadProfileImage = async (file: File) => {
+    setUploadingProfileImage(true);
+    setProfileMessage(null);
+
+    try {
+      const profileImageUrl = await readImageFileAsDataUrl(file);
+      const payload = await fetchJson<{ user: MeResponse["user"] }>("/auth/profile", {
+        method: "PUT",
+        body: JSON.stringify({ profileImageUrl })
+      });
+      setMe(payload.user);
+      setProfileMessage("Profile image updated.");
+    } catch (error) {
+      setProfileMessage(error instanceof Error ? error.message : "Could not update profile image.");
+    } finally {
+      setUploadingProfileImage(false);
+    }
+  };
 
   const submitKyc = async () => {
     setSubmittingKyc(true);
@@ -1147,14 +1170,43 @@ export function DriverAccountDesktopPage({ user }: { user: SessionUser }) {
       <div className="mx-auto grid max-w-6xl grid-cols-12 gap-8">
         <div className="col-span-4 space-y-6">
           <div className="rounded-[2rem] border border-border bg-card p-8 text-center shadow-sm">
-            <div className="mx-auto mb-4 flex h-32 w-32 items-center justify-center rounded-full bg-gradient-to-tr from-primary to-secondary text-4xl font-extrabold text-white shadow-xl">
-              {initials}
+            <div className="mx-auto mb-4 h-32 w-32 overflow-hidden rounded-full shadow-xl">
+              {me?.profileImageUrl ? (
+                <Image
+                  src={me.profileImageUrl}
+                  alt={`${user.name} profile`}
+                  width={128}
+                  height={128}
+                  className="h-32 w-32 object-cover"
+                />
+              ) : (
+                <div className="flex h-32 w-32 items-center justify-center bg-gradient-to-tr from-primary to-secondary text-4xl font-extrabold text-white">
+                  {initials}
+                </div>
+              )}
             </div>
             <h2 className="mb-1 text-2xl font-bold">{user.name}</h2>
             <p className="font-medium text-muted-foreground">{user.phone}</p>
             <div className={`mt-3 inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-bold uppercase ${statusTone}`}>
               <CheckCircle2 className="h-4 w-4" /> {(kyc?.kycStatus ?? me?.kycStatus ?? "PENDING").replaceAll("_", " ")}
             </div>
+            <label className="mt-5 inline-flex cursor-pointer items-center justify-center rounded-full border border-border bg-muted px-4 py-2 text-xs font-bold text-foreground transition hover:bg-muted/80">
+              {uploadingProfileImage ? "Uploading..." : "Upload photo"}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/jpg,image/webp"
+                className="hidden"
+                disabled={uploadingProfileImage}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) {
+                    void uploadProfileImage(file);
+                  }
+                  event.currentTarget.value = "";
+                }}
+              />
+            </label>
+            {profileMessage ? <div className="mt-3 text-xs text-muted-foreground">{profileMessage}</div> : null}
             <div className="mt-8 grid grid-cols-2 gap-4 border-t border-border pt-6">
               <StatCard label="Availability" value={me?.availability ?? "OFFLINE"} />
               <StatCard label="Balance" value={wallet ? `GHS ${wallet.totalBalanceGhs.toFixed(0)}` : "GHS 0"} />

@@ -30,6 +30,7 @@ import {
 import { fetchJson } from "@/lib/api";
 import { clearSession, type SessionUser } from "@/lib/auth-session";
 import { getSavedPlaces, removeSavedPlace, type SavedPlace } from "@/lib/passenger-favourites";
+import { readImageFileAsDataUrl } from "@/lib/profile-image";
 import { useTheme } from "@/lib/theme";
 
 type RideItem = {
@@ -62,6 +63,7 @@ type MeResponse = {
     name: string;
     phone: string;
     email?: string | null;
+    profileImageUrl?: string | null;
     trustedContacts?: string[];
     kycStatus?: string | null;
   };
@@ -474,6 +476,8 @@ export function PassengerMessagesDesktopPage({ user }: { user: SessionUser }) {
 export function PassengerAccountDesktopPage({ user }: { user: SessionUser }) {
   const [me, setMe] = useState<MeResponse["user"] | null>(null);
   const [rides, setRides] = useState<RideItem[]>([]);
+  const [profileMessage, setProfileMessage] = useState<string | null>(null);
+  const [uploadingProfileImage, setUploadingProfileImage] = useState(false);
 
   useEffect(() => {
     fetchJson<MeResponse>("/auth/me")
@@ -491,13 +495,40 @@ export function PassengerAccountDesktopPage({ user }: { user: SessionUser }) {
     .slice(0, 2)
     .toUpperCase();
 
+  const uploadProfileImage = async (file: File | null) => {
+    if (!file) {
+      return;
+    }
+
+    setUploadingProfileImage(true);
+    setProfileMessage(null);
+
+    try {
+      const profileImageUrl = await readImageFileAsDataUrl(file);
+      const payload = await fetchJson<MeResponse & { message: string }>("/auth/profile", {
+        method: "PUT",
+        body: JSON.stringify({ profileImageUrl })
+      });
+      setMe(payload.user);
+      setProfileMessage("Profile image updated.");
+    } catch (error) {
+      setProfileMessage(error instanceof Error ? error.message : "Could not update profile image.");
+    } finally {
+      setUploadingProfileImage(false);
+    }
+  };
+
   return (
     <PassengerDesktopShell user={user} title="Account Settings" active="account">
       <div className="mx-auto grid max-w-6xl grid-cols-12 gap-10">
         <div className="col-span-4 space-y-6">
           <div className="rounded-[2rem] border border-border bg-card p-8 text-center shadow-sm">
-            <div className="mx-auto mb-6 flex h-32 w-32 items-center justify-center rounded-full bg-gradient-to-tr from-primary to-secondary text-5xl font-extrabold text-white shadow-lg shadow-primary/20">
-              {initials}
+            <div className="relative mx-auto mb-6 flex h-32 w-32 items-center justify-center overflow-hidden rounded-full bg-gradient-to-tr from-primary to-secondary text-5xl font-extrabold text-white shadow-lg shadow-primary/20">
+              {me?.profileImageUrl ? (
+                <Image src={me.profileImageUrl} alt={`${user.name} profile`} fill className="object-cover" unoptimized />
+              ) : (
+                initials
+              )}
             </div>
             <h2 className="mb-1 text-2xl font-bold">{user.name}</h2>
             <p className="mb-4 font-medium text-muted-foreground">{user.phone}</p>
@@ -505,6 +536,18 @@ export function PassengerAccountDesktopPage({ user }: { user: SessionUser }) {
               me?.kycStatus === "APPROVED" ? "bg-secondary/10 text-secondary" : me?.kycStatus === "REJECTED" ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"
             }`}>
               <CheckCircle2 className="h-4 w-4" /> {me?.kycStatus ?? "PENDING"}
+            </div>
+            <div className="mb-8">
+              <label className="inline-flex cursor-pointer items-center rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground">
+                {uploadingProfileImage ? "Uploading..." : "Upload photo"}
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/jpg,image/webp"
+                  className="hidden"
+                  onChange={(event) => void uploadProfileImage(event.target.files?.[0] ?? null)}
+                />
+              </label>
+              {profileMessage ? <div className="mt-3 text-sm text-muted-foreground">{profileMessage}</div> : null}
             </div>
             <div className="grid grid-cols-2 gap-4 border-t border-border pt-6">
               <div>

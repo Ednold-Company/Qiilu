@@ -77,7 +77,8 @@ export async function autoAssignRide(rideId: string) {
     const candidates = await prisma.user.findMany({
       where: {
         role: "DRIVER",
-        availability: "AVAILABLE"
+        availability: "AVAILABLE",
+        kycStatus: "APPROVED"
       },
       select: {
         id: true,
@@ -141,7 +142,7 @@ export async function releaseDriverFromRide(ride: Pick<Ride, "driverId" | "statu
   await prisma.user.update({
     where: { id: ride.driverId },
     data: {
-      availability: ride.status === "COMPLETED" ? "AVAILABLE" : "AVAILABLE",
+      availability: "AVAILABLE",
       lastSeenAt: new Date()
     }
   });

@@ -107,6 +107,7 @@ model User {
   passwordHash       String
   preferredPayment   PaymentMethod?
   momoProvider       String             @default("MTN MoMo")
+  profileImageUrl    String?
   trustedContacts    Json?
   lowBandwidthMode   Boolean            @default(false)
   safetyShareEnabled Boolean            @default(true)

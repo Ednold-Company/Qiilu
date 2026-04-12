@@ -34,6 +34,7 @@ import {
 import { fetchJson } from "@/lib/api";
 import { clearSession, type SessionUser } from "@/lib/auth-session";
 import { shouldUpdateLiveCoords } from "@/lib/map-motion";
+import { readImageFileAsDataUrl } from "@/lib/profile-image";
 import { useTheme } from "@/lib/theme";
 
 const PassengerLiveMap = dynamic(() => import("@/components/passenger-live-map"), { ssr: false });
@@ -100,6 +101,7 @@ type MeResponse = {
     name: string;
     phone: string;
     email?: string | null;
+    profileImageUrl?: string | null;
     role: "DRIVER";
     kycStatus?: string | null;
     availability?: "OFFLINE" | "AVAILABLE" | "ON_TRIP";
@@ -993,6 +995,8 @@ export function DriverAccountMobilePage({ sessionUser }: { sessionUser: SessionU
   const [documentUrl, setDocumentUrl] = useState("");
   const [kycMessage, setKycMessage] = useState<string | null>(null);
   const [submittingKyc, setSubmittingKyc] = useState(false);
+  const [profileMessage, setProfileMessage] = useState<string | null>(null);
+  const [uploadingProfileImage, setUploadingProfileImage] = useState(false);
 
   const loadAccount = async () => {
     const [mePayload, walletPayload, kycPayload] = await Promise.all([
@@ -1021,6 +1025,25 @@ export function DriverAccountMobilePage({ sessionUser }: { sessionUser: SessionU
     .join("")
     .slice(0, 2)
     .toUpperCase();
+
+  const uploadProfileImage = async (file: File) => {
+    setUploadingProfileImage(true);
+    setProfileMessage(null);
+
+    try {
+      const profileImageUrl = await readImageFileAsDataUrl(file);
+      const payload = await fetchJson<{ user: MeResponse["user"] }>("/auth/profile", {
+        method: "PUT",
+        body: JSON.stringify({ profileImageUrl })
+      });
+      setMe(payload.user);
+      setProfileMessage("Profile image updated.");
+    } catch (error) {
+      setProfileMessage(error instanceof Error ? error.message : "Could not update profile image.");
+    } finally {
+      setUploadingProfileImage(false);
+    }
+  };
 
   const logout = () => {
     fetchJson("/auth/logout", { method: "POST" })
@@ -1073,14 +1096,43 @@ export function DriverAccountMobilePage({ sessionUser }: { sessionUser: SessionU
           <CheckCircle2 className="h-3 w-3" /> {me?.kycStatus ?? "pending"}
         </div>
         <div className="mb-6 mt-2 flex flex-col items-center">
-          <div className="mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-tr from-blue-500 to-purple-600 text-3xl font-extrabold text-white shadow-lg border-4 border-background">
-            {initials}
+          <div className="mb-4 overflow-hidden rounded-full border-4 border-background shadow-lg">
+            {me?.profileImageUrl ? (
+              <Image
+                src={me.profileImageUrl}
+                alt={`${sessionUser.name} profile`}
+                width={96}
+                height={96}
+                className="h-24 w-24 object-cover"
+              />
+            ) : (
+              <div className="flex h-24 w-24 items-center justify-center bg-gradient-to-tr from-blue-500 to-purple-600 text-3xl font-extrabold text-white">
+                {initials}
+              </div>
+            )}
           </div>
           <h2 className="text-2xl font-bold tracking-tight">{sessionUser.name}</h2>
           <p className="text-sm font-medium text-muted-foreground">{sessionUser.phone}</p>
           <div className="mt-3 rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
             Driver Partner Pro
           </div>
+          <label className="mt-4 inline-flex cursor-pointer items-center justify-center rounded-full border border-border bg-muted px-4 py-2 text-xs font-bold text-foreground transition hover:bg-muted/80">
+            {uploadingProfileImage ? "Uploading..." : "Upload photo"}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/jpg,image/webp"
+              className="hidden"
+              disabled={uploadingProfileImage}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) {
+                  void uploadProfileImage(file);
+                }
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
+          {profileMessage ? <div className="mt-3 text-center text-xs text-muted-foreground">{profileMessage}</div> : null}
         </div>
 
         <div className="grid grid-cols-3 gap-2 border-t border-border pt-6">

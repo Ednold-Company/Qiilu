@@ -57,7 +57,8 @@ driverRouter.get("/requests", requireAuth, async (request: AuthenticatedRequest,
     where: { id: request.auth?.userId },
     select: {
       id: true,
-      availability: true
+      availability: true,
+      kycStatus: true
     }
   });
 
@@ -67,7 +68,9 @@ driverRouter.get("/requests", requireAuth, async (request: AuthenticatedRequest,
   }
 
   const dispatchEnabled =
-    driver.availability === "AVAILABLE" && realtimeGateway.isUserConnected(driver.id, "DRIVER");
+    driver.kycStatus === "APPROVED" &&
+    driver.availability === "AVAILABLE" &&
+    realtimeGateway.isUserConnected(driver.id, "DRIVER");
 
   const openRequests = await prisma.ride.findMany({
     where: {
@@ -90,6 +93,8 @@ driverRouter.get("/requests", requireAuth, async (request: AuthenticatedRequest,
     dispatchEnabled,
     message: dispatchEnabled
       ? null
+      : driver.kycStatus !== "APPROVED"
+        ? "KYC approval is required before you can receive live ride requests."
       : driver.availability !== "AVAILABLE"
         ? "Go online to receive live ride requests."
         : "Realtime connection required before live requests can appear.",
@@ -153,7 +158,21 @@ driverRouter.put("/status/:userId", requireAuth, async (request: AuthenticatedRe
     lng?: number;
   };
 
-  const driver = await syncDriverAvailability({
+  if (body.availability === "AVAILABLE") {
+    const driver = await prisma.user.findUnique({
+      where: { id: request.params.userId },
+      select: {
+        kycStatus: true
+      }
+    });
+
+    if (!driver || driver.kycStatus !== "APPROVED") {
+      response.status(409).json({ message: "KYC approval is required before going online" });
+      return;
+    }
+  }
+
+  const updatedDriver = await syncDriverAvailability({
     userId: request.params.userId,
     availability: body.availability ?? "OFFLINE",
     lat: body.lat,
@@ -163,10 +182,10 @@ driverRouter.put("/status/:userId", requireAuth, async (request: AuthenticatedRe
   response.json({
     message: "Driver status updated",
     status: {
-      availability: driver.availability,
-      lastKnownLat: driver.lastKnownLat,
-      lastKnownLng: driver.lastKnownLng,
-      lastSeenAt: driver.lastSeenAt
+      availability: updatedDriver.availability,
+      lastKnownLat: updatedDriver.lastKnownLat,
+      lastKnownLng: updatedDriver.lastKnownLng,
+      lastSeenAt: updatedDriver.lastSeenAt
     }
   });
 });
@@ -182,6 +201,11 @@ driverRouter.post("/requests/:rideId/accept", requireAuth, async (request: Authe
 
   if (driver.availability !== "AVAILABLE") {
     response.status(409).json({ message: "Go online before accepting ride requests" });
+    return;
+  }
+
+  if (driver.kycStatus !== "APPROVED") {
+    response.status(409).json({ message: "KYC approval is required before accepting rides" });
     return;
   }
 

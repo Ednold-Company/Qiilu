@@ -1166,10 +1166,6 @@ input {
   border-radius: 0;
 }
 
-.real-map-shell-background {
-  pointer-events: none;
-}
-
 .real-map-shell-background .leaflet-control-container,
 .real-map-shell-background .leaflet-bottom {
   display: none;
@@ -1177,6 +1173,13 @@ input {
 
 .real-map-shell-background .leaflet-container {
   filter: saturate(0.92) contrast(0.96);
+}
+
+.real-map-shell-background,
+.real-map-shell-background .leaflet-container,
+.real-map-shell-background .real-map-canvas,
+.real-map-shell-background .real-map-canvas-full {
+  pointer-events: auto;
 }
 
 .real-map-canvas {
