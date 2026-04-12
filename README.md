@@ -132,6 +132,7 @@ Required backend environment variables:
 
 - `DATABASE_URL`
 - `JWT_SECRET`
+- `HOST` optional, defaults to `0.0.0.0`
 - `FRONTEND_ORIGIN`
 - `OTP_PROVIDER` optional, use `console` for local OTP testing or `smtp` for email OTP delivery
 - `SMTP_HOST` required when `OTP_PROVIDER=smtp`
@@ -149,6 +150,14 @@ Required backend environment variables:
 - `SEED_ADMIN_PASSWORD` optional
 - `PORT` optional
 
+Production guardrails now enforced by the backend:
+
+- `DATABASE_URL`, `JWT_SECRET`, and `FRONTEND_ORIGIN` must be set
+- `JWT_SECRET` must be at least 24 characters in production
+- `OTP_PROVIDER=console` is rejected in production
+- SMTP credentials are required when `OTP_PROVIDER=smtp`
+- `PAYSTACK_SECRET_KEY` is required when `PAYMENT_PROVIDER=paystack`
+
 Recommended backend release flow:
 
 ```bash
@@ -158,6 +167,21 @@ npm run build
 ```
 
 Container startup already runs `prisma db push` before starting the API.
+
+Useful health endpoints in production:
+
+- `GET /health`
+- `GET /health/live`
+- `GET /health/ready`
+
+Suggested backend host setup:
+
+1. Set the root/project directory to `backend`
+2. Build command: `npm install && npm run prisma:generate && npm run build`
+3. Start command: `npm start`
+4. Health check path: `/health/ready`
+
+If your platform deploys with Docker instead of commands, the included [backend/Dockerfile](/c:/Users/arnoc/Desktop/Website%20Projects%202026/Qiilu/backend/Dockerfile) is ready to use.
 
 ### Frontend
 
@@ -172,6 +196,103 @@ Recommended Vercel settings:
 1. Set the project root directory to `frontend`
 2. Set `NEXT_PUBLIC_API_URL` to your deployed backend URL
 3. Keep `Node.js` on the current Vercel default runtime
+4. Redeploy whenever the backend domain changes
+
+The frontend now builds in standalone mode, which also makes it easier to run on non-Vercel hosts if you ever need to containerize it later.
+
+## Railway + Vercel
+
+Qiilu is now prepped specifically for:
+
+- Railway for the backend
+- Vercel for the frontend
+
+### Railway backend
+
+Files added for Railway:
+
+- [backend/railway.json](/c:/Users/arnoc/Desktop/Website%20Projects%202026/Qiilu/backend/railway.json)
+- [backend/Dockerfile](/c:/Users/arnoc/Desktop/Website%20Projects%202026/Qiilu/backend/Dockerfile)
+
+Recommended Railway setup:
+
+1. Create a new Railway service from this repo
+2. Set the root directory to `backend`
+3. Let Railway build from the Dockerfile
+4. Set these required variables:
+   - `DATABASE_URL`
+   - `JWT_SECRET`
+   - `FRONTEND_ORIGIN`
+5. Set these depending on your live setup:
+   - `OTP_PROVIDER`
+   - `SMTP_HOST`
+   - `SMTP_PORT`
+   - `SMTP_USER`
+   - `SMTP_PASS`
+   - `SMTP_FROM`
+   - `PAYMENT_PROVIDER`
+   - `PAYSTACK_SECRET_KEY`
+   - `PAYSTACK_WEBHOOK_SECRET`
+   - `PAYSTACK_CALLBACK_URL`
+   - `MAPBOX_ACCESS_TOKEN`
+6. After deploy, confirm:
+   - `GET /health/live`
+   - `GET /health/ready`
+
+Important production values for Railway:
+
+- `HOST=0.0.0.0`
+- `NODE_ENV=production`
+- `FRONTEND_ORIGIN=https://your-vercel-domain.vercel.app`
+
+If you attach a custom frontend domain later, update `FRONTEND_ORIGIN` to that exact domain too.
+
+### Vercel frontend
+
+Files added for Vercel:
+
+- [frontend/vercel.json](/c:/Users/arnoc/Desktop/Website%20Projects%202026/Qiilu/frontend/vercel.json)
+
+Recommended Vercel setup:
+
+1. Import this repo into Vercel
+2. Set the root directory to `frontend`
+3. Add:
+   - `NEXT_PUBLIC_API_URL=https://your-railway-backend.up.railway.app`
+4. Deploy
+
+After the first frontend deploy:
+
+1. Copy the deployed Vercel URL
+2. Add that URL back into Railway as `FRONTEND_ORIGIN`
+3. Redeploy the backend if needed so CORS is aligned
+
+### Railway + Vercel go-live order
+
+Use this order to avoid CORS and callback confusion:
+
+1. Deploy backend to Railway
+2. Confirm Railway health endpoints are up
+3. Deploy frontend to Vercel with `NEXT_PUBLIC_API_URL` pointing to Railway
+4. Copy the Vercel URL into Railway `FRONTEND_ORIGIN`
+5. Redeploy backend if Railway does not auto-refresh envs
+6. Test:
+   - signup
+   - login
+   - passenger ride request
+   - driver login
+   - websocket realtime updates
+   - logout
+
+### Paystack callback note
+
+For Railway + Vercel specifically, set:
+
+- `PAYSTACK_CALLBACK_URL=https://your-vercel-domain.vercel.app/passenger?payment=paystack`
+
+And point your Paystack webhook to:
+
+- `https://your-railway-backend.up.railway.app/payments/webhooks/paystack`
 
 ### Cross-origin production setup
 
@@ -217,3 +338,20 @@ What is wired today:
 3. Replace demo admin actions with audited workflows, notifications, and background jobs.
 4. Add automated API tests, end-to-end booking tests, and production observability.
 5. Add background jobs for payout retry, payment reconciliation, and provider failure alerts.
+
+## Deployment checklist
+
+Before going live, work through this order:
+
+1. Deploy the backend and confirm `GET /health/ready` returns `200`
+2. Set `FRONTEND_ORIGIN` to the exact deployed frontend URL
+3. Set `NEXT_PUBLIC_API_URL` to the exact deployed backend URL
+4. Switch `OTP_PROVIDER` away from `console`
+5. If using payments, set `PAYMENT_PROVIDER=paystack` and configure the Paystack webhook
+6. Open the deployed frontend and test:
+   - signup
+   - login
+   - passenger ride request
+   - driver login
+   - realtime updates
+   - logout

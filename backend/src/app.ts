@@ -3,6 +3,7 @@ import "dotenv/config";
 import express from "express";
 import { requestLog } from "./middleware/request-log.js";
 import { rateLimit } from "./middleware/rate-limit.js";
+import { getFrontendOrigins } from "./lib/env.js";
 import { authRouter } from "./routes/auth.js";
 import { adminRouter } from "./routes/admin.js";
 import { driverRouter } from "./routes/driver.js";
@@ -15,13 +16,17 @@ import { ussdRouter } from "./routes/ussd.js";
 
 export const app = express();
 
-const frontendOrigins = (process.env.FRONTEND_ORIGIN ?? "http://localhost:3000")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+const frontendOrigins = getFrontendOrigins();
 
 app.use(cors({
-  origin: frontendOrigins,
+  origin(origin, callback) {
+    if (!origin || frontendOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new Error(`Origin ${origin} is not allowed by CORS`));
+  },
   credentials: true
 }));
 app.set("trust proxy", 1);
