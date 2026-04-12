@@ -1,0 +1,1253 @@
+"use client";
+
+import dynamic from "next/dynamic";
+import Link from "next/link";
+import Image from "next/image";
+import { useEffect, useState, type ReactNode } from "react";
+import {
+  Activity,
+  AlertTriangle,
+  Bell,
+  Car,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  CreditCard,
+  FileText,
+  HelpCircle,
+  Home,
+  MapPin,
+  Menu,
+  MessageSquare,
+  Moon,
+  Navigation,
+  Phone,
+  Power,
+  Send,
+  Settings,
+  ShieldBan,
+  ShieldCheck,
+  Sun,
+  User,
+  Wallet
+} from "lucide-react";
+import { fetchJson } from "@/lib/api";
+import { clearSession, type SessionUser } from "@/lib/auth-session";
+import { useTheme } from "@/lib/theme";
+
+const PassengerLiveMap = dynamic(() => import("@/components/passenger-live-map"), { ssr: false });
+
+type DriverRequestItem = {
+  id: string;
+  pickup: string;
+  destination: string;
+  fareGhs: number;
+  etaMinutes: number;
+  passengers: number;
+  distanceKm: number;
+  payment: string;
+  paymentMethod: string;
+  countdownSeconds: number;
+  riderName: string;
+  pickupGuidance?: string | null;
+  safetyPin?: string | null;
+};
+
+type DriverWalletResponse = {
+  wallet: {
+    totalBalanceGhs: number;
+    cashGhs: number;
+    momoGhs: number;
+    pendingWithdrawalGhs: number;
+    weeklyTrips: number;
+    completionRate: number;
+    commissionRate: number;
+    instantMomoCashoutEligible: boolean;
+  };
+  transactions: Array<{
+    id: string;
+    kind: string;
+    amountGhs: number;
+    channel: string;
+    createdAt: string;
+  }>;
+  payoutRequests: Array<{
+    id: string;
+    amountGhs: number;
+    provider: string;
+    accountRef: string;
+    status: string;
+    createdAt: string;
+  }>;
+};
+
+type DriverHistoryResponse = {
+  upcoming: Array<{ route: string; time: string; rider: string; gross: number; net: number }>;
+  past: Array<{ route: string; time: string; rider: string; gross: number; net: number }>;
+  cancelled: Array<{ route: string; time: string; rider: string; gross: number; net: number }>;
+};
+
+type DriverStatusResponse = {
+  status: {
+    availability: "OFFLINE" | "AVAILABLE" | "ON_TRIP";
+  };
+};
+
+type MeResponse = {
+  user: {
+    id: string;
+    name: string;
+    phone: string;
+    email?: string | null;
+    role: "DRIVER";
+    kycStatus?: string | null;
+    availability?: "OFFLINE" | "AVAILABLE" | "ON_TRIP";
+  };
+};
+
+type DriverKycResponse = {
+  kycStatus: "PENDING" | "APPROVED" | "REJECTED";
+  latestSubmission: {
+    id: string;
+    status: "PENDING" | "APPROVED" | "REJECTED";
+    documentUrl: string;
+    documentType: string | null;
+    documentNumber: string | null;
+    legalName: string | null;
+    issuingCountry: string | null;
+    createdAt: string;
+    reviewedAt: string | null;
+  } | null;
+  submissions: Array<{
+    id: string;
+    status: "PENDING" | "APPROVED" | "REJECTED";
+    documentUrl: string;
+    documentType: string | null;
+    documentNumber: string | null;
+    legalName: string | null;
+    issuingCountry: string | null;
+    createdAt: string;
+    reviewedAt: string | null;
+  }>;
+  requiredDocuments: string[];
+};
+
+type ShellProps = {
+  title: string;
+  active: "home" | "rides" | "wallet" | "account";
+  children: ReactNode;
+};
+
+export function DriverShell({ title, active, children }: ShellProps) {
+  const { isDark, ready, toggleTheme } = useTheme();
+
+  return (
+    <div className="min-h-screen bg-background text-foreground sm:mx-auto sm:max-w-[430px] sm:overflow-hidden sm:rounded-[3rem] sm:border-8 sm:border-gray-900 sm:shadow-2xl">
+      <div className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-card/90 p-6 pt-10 backdrop-blur sm:pt-12">
+        <h1 className="text-xl font-bold">{title}</h1>
+        <button
+          onClick={toggleTheme}
+          className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-muted"
+          type="button"
+        >
+          {ready && isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+        </button>
+      </div>
+
+      <div className="min-h-[calc(100vh-9rem)] overflow-y-auto px-4 pb-24 pt-6">{children}</div>
+
+      <div className="fixed bottom-0 left-0 right-0 z-30 h-20 border-t border-border bg-card sm:left-auto sm:right-auto sm:w-full sm:max-w-[430px]">
+        <div className="grid h-full grid-cols-4 items-center px-3 pb-4 pt-2">
+          <DriverBottomItem href="/driver" icon={Home} label="Home" active={active === "home"} />
+          <DriverBottomItem href="/driver/rides" icon={Navigation} label="Rides" active={active === "rides"} />
+          <DriverBottomItem href="/driver/wallet" icon={Wallet} label="Wallet" active={active === "wallet"} />
+          <DriverBottomItem href="/driver/account" icon={User} label="Account" active={active === "account"} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DriverBottomItem({
+  href,
+  icon: Icon,
+  label,
+  active
+}: {
+  href: string;
+  icon: typeof Home;
+  label: string;
+  active: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`flex min-w-0 flex-col items-center justify-center text-center ${active ? "text-primary" : "text-muted-foreground"}`}
+    >
+      <Icon className="mb-1 h-6 w-6" />
+      <span className="block max-w-full text-[10px] font-semibold leading-none">{label}</span>
+    </Link>
+  );
+}
+
+function DriverEmpty({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="rounded-2xl border border-dashed border-border bg-card p-8 text-center">
+      <p className="text-lg font-bold">{title}</p>
+      <p className="mt-2 text-sm text-muted-foreground">{description}</p>
+    </div>
+  );
+}
+
+function ThemeButton() {
+  const { isDark, ready, toggleTheme } = useTheme();
+
+  return (
+    <button onClick={toggleTheme} className="flex h-full w-full items-center justify-center" type="button">
+      {ready && isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+    </button>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl bg-muted/50 p-3 text-center">
+      <div className="mb-1 text-lg font-extrabold">{value}</div>
+      <div className="text-[10px] font-bold uppercase text-muted-foreground">{label}</div>
+    </div>
+  );
+}
+
+function statusText(value: DriverStatusResponse["status"]["availability"] | undefined) {
+  if (value === "ON_TRIP") return "ONLINE";
+  if (value === "AVAILABLE") return "ONLINE";
+  return "OFFLINE";
+}
+
+export function DriverHomeMobilePage({ user }: { user: SessionUser }) {
+  const [requests, setRequests] = useState<DriverRequestItem[]>([]);
+  const [wallet, setWallet] = useState<DriverWalletResponse["wallet"] | null>(null);
+  const [availability, setAvailability] =
+    useState<DriverStatusResponse["status"]["availability"]>("OFFLINE");
+  const [loading, setLoading] = useState(true);
+  const [currentCoords, setCurrentCoords] = useState<{ lat: number; lng: number } | null>(null);
+
+  const load = async () => {
+    try {
+      const [requestPayload, walletPayload, statusPayload] = await Promise.all([
+        fetchJson<{ requests: DriverRequestItem[] }>("/driver/requests"),
+        fetchJson<DriverWalletResponse>(`/driver/wallet/${user.id}`),
+        fetchJson<DriverStatusResponse>(`/driver/status/${user.id}`)
+      ]);
+      setRequests(requestPayload.requests);
+      setWallet(walletPayload.wallet);
+      setAvailability(statusPayload.status.availability);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, [user.id]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("geolocation" in navigator)) {
+      return;
+    }
+
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        setCurrentCoords({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        });
+      },
+      () => undefined,
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 15000
+      }
+    );
+
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, []);
+
+  const currentRequest = requests[0] ?? null;
+  const isOnline = availability !== "OFFLINE";
+  const step: "idle" | "incoming" | "active" = !isOnline
+    ? "idle"
+    : availability === "ON_TRIP"
+      ? "active"
+      : currentRequest
+        ? "incoming"
+        : "idle";
+
+  const syncAvailability = async (next: "OFFLINE" | "AVAILABLE") => {
+    await fetchJson(`/driver/status/${user.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ availability: next })
+    });
+    setAvailability(next);
+    if (next === "OFFLINE") {
+      setRequests([]);
+    } else {
+      void load();
+    }
+  };
+
+  const acceptRide = async () => {
+    if (!currentRequest) return;
+    await fetchJson(`/driver/requests/${currentRequest.id}/accept`, { method: "POST" });
+    setAvailability("ON_TRIP");
+    void load();
+  };
+
+  const rejectRide = async () => {
+    if (!currentRequest) return;
+    await fetchJson(`/driver/requests/${currentRequest.id}/reject`, { method: "POST" });
+    void load();
+  };
+
+  const completeRide = async () => {
+    if (!currentRequest) return;
+    await fetchJson(`/driver/rides/${currentRequest.id}/stage`, {
+      method: "POST",
+      body: JSON.stringify({ status: "COMPLETED" })
+    });
+    await fetchJson(`/driver/status/${user.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ availability: "AVAILABLE" })
+    });
+    setAvailability("AVAILABLE");
+    void load();
+  };
+
+  if (loading) {
+    return (
+      <DriverShell title="Driver" active="home">
+        <DriverEmpty
+          title="Loading dashboard"
+          description="Qiilu is preparing your live queue and earnings."
+        />
+      </DriverShell>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background text-foreground sm:mx-auto sm:max-w-[430px] sm:overflow-hidden sm:rounded-[3rem] sm:border-8 sm:border-gray-900 sm:shadow-2xl">
+      <div className="relative isolate min-h-screen overflow-hidden bg-background">
+        <div className="absolute inset-0 z-0">
+          <PassengerLiveMap
+            pickup={currentRequest?.pickup}
+            destination={currentRequest?.destination}
+            currentCoords={currentCoords}
+            fullScreen
+            backgroundMode
+          />
+        </div>
+
+        <div className="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2">
+          <div
+            className={`flex h-16 w-16 items-center justify-center rounded-full ${
+              isOnline ? "bg-secondary/20 animate-pulse" : "bg-muted"
+            }`}
+          >
+            <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-border bg-background shadow-lg">
+              <Navigation className="h-4 w-4 rotate-45 fill-current text-foreground" />
+            </div>
+          </div>
+        </div>
+
+        <div className="absolute left-0 top-0 z-20 flex w-full flex-col">
+          <div className="pointer-events-auto flex items-center justify-between bg-gradient-to-b from-background/90 to-transparent p-6 pt-10 sm:pt-12">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-background/80 shadow-md backdrop-blur-sm">
+              <Menu className="h-5 w-5" />
+            </div>
+
+            <button
+              onClick={() => void syncAvailability(isOnline ? "OFFLINE" : "AVAILABLE")}
+              className={`flex items-center gap-2 rounded-full px-5 py-2.5 font-bold shadow-lg ${
+                isOnline
+                  ? "bg-secondary text-secondary-foreground shadow-secondary/25"
+                  : "bg-muted text-muted-foreground"
+              }`}
+              type="button"
+            >
+              <Power className="h-4 w-4" />
+              {statusText(availability)}
+            </button>
+
+            <div className="flex items-center gap-2">
+              <div className="rounded-2xl bg-background/88 px-3 py-2 shadow-md backdrop-blur-sm">
+                <Image src="/qiilu.png" alt="Qiilu" width={88} height={28} className="h-6 w-auto" priority />
+              </div>
+              <div className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-background/80 shadow-md">
+                <ThemeButton />
+              </div>
+            </div>
+          </div>
+
+          {step === "idle" && isOnline && wallet ? (
+            <div className="pointer-events-auto mx-4 mt-2 rounded-2xl border border-border bg-card p-5 shadow-xl">
+              <h3 className="mb-1 text-sm font-medium text-muted-foreground">Today's Earnings</h3>
+              <div className="mb-4 flex items-end justify-between">
+                <div className="text-4xl font-extrabold tracking-tight">
+                  <span className="mr-1 text-xl text-muted-foreground">GHS</span>
+                  {wallet.totalBalanceGhs.toFixed(2)}
+                </div>
+                <div className="flex items-center gap-1 rounded-md bg-primary/10 px-2 py-1 text-sm font-bold text-primary">
+                  <Car className="h-3 w-3" /> {wallet.weeklyTrips} trips
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3 border-t border-border pt-4">
+                <div className="flex flex-col">
+                  <span className="text-xs text-muted-foreground">Trips</span>
+                  <span className="font-bold">{wallet.weeklyTrips}</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs text-muted-foreground">Completion</span>
+                  <span className="font-bold">{wallet.completionRate}%</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs text-muted-foreground">Commission</span>
+                  <span className="font-bold">{wallet.commissionRate}%</span>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="absolute bottom-0 left-0 z-20 flex w-full flex-col justify-end">
+          {!isOnline ? (
+            <div className="pointer-events-auto rounded-t-[2rem] border-t border-border bg-background p-8 pb-32 text-center shadow-2xl">
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+                <Power className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <h2 className="mb-2 text-2xl font-bold">You're offline</h2>
+              <p className="mb-6 text-muted-foreground">Go online to start receiving ride requests.</p>
+              <button
+                onClick={() => void syncAvailability("AVAILABLE")}
+                className="h-14 w-full rounded-full bg-primary text-lg font-bold text-primary-foreground"
+                type="button"
+              >
+                Go Online
+              </button>
+            </div>
+          ) : null}
+
+          {step === "incoming" && currentRequest ? (
+            <div className="pointer-events-auto overflow-hidden rounded-t-[2rem] border-t border-border bg-background pb-24 shadow-[0_-10px_40px_rgba(0,0,0,0.2)]">
+              <div className="h-1.5 w-full bg-muted">
+                <div
+                  className="h-full origin-left animate-[shrink_15s_linear_forwards] bg-primary"
+                  style={{ width: "100%" }}
+                />
+              </div>
+              <div className="p-6">
+                <div className="mb-6 flex items-start justify-between">
+                  <div>
+                    <div className="mb-2 inline-block rounded bg-primary/10 px-2 py-1 text-xs font-bold text-primary">
+                      APP REQUEST
+                    </div>
+                    <h2 className="text-3xl font-extrabold tracking-tight">
+                      GHS {currentRequest.fareGhs.toFixed(2)}
+                    </h2>
+                    <p className="mt-1 flex items-center gap-2 font-medium text-muted-foreground">
+                      <User className="h-4 w-4" /> {currentRequest.etaMinutes} mins •{" "}
+                      {currentRequest.distanceKm} km
+                    </p>
+                  </div>
+                  <div className="relative flex h-16 w-16 items-center justify-center rounded-full border-4 border-muted">
+                    <div className="absolute inset-0 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+                    <span className="text-lg font-bold">{currentRequest.countdownSeconds}s</span>
+                  </div>
+                </div>
+
+                <div className="mb-6 ml-2 space-y-4 border-l-2 border-border pl-4">
+                  <div className="relative">
+                    <div className="absolute -left-[23px] top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-primary" />
+                    <div className="text-sm font-bold">{currentRequest.pickup}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {currentRequest.pickupGuidance ?? "Pickup ready"}
+                    </div>
+                  </div>
+                  <div className="relative">
+                    <div className="absolute -left-[23px] top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-foreground" />
+                    <div className="text-sm font-bold">{currentRequest.destination}</div>
+                  </div>
+                </div>
+
+                <div className="mb-6 flex items-center justify-between rounded-xl bg-muted/50 p-3">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Wallet className="h-4 w-4 text-primary" /> {currentRequest.payment}
+                  </div>
+                  <div className="text-sm font-medium">{currentRequest.riderName}</div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <button
+                    onClick={() => void rejectRide()}
+                    className="h-16 rounded-2xl border border-border bg-background text-lg font-bold"
+                    type="button"
+                  >
+                    Reject
+                  </button>
+                  <button
+                    onClick={() => void acceptRide()}
+                    className="h-16 rounded-2xl bg-primary text-lg font-bold text-primary-foreground shadow-lg shadow-primary/25"
+                    type="button"
+                  >
+                    Accept
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {step === "active" && currentRequest ? (
+            <div className="pointer-events-auto rounded-t-[2rem] border-t border-border bg-background pb-24 shadow-[0_-10px_40px_rgba(0,0,0,0.2)]">
+              <div className="flex w-full justify-center pb-2 pt-3">
+                <div className="h-1.5 w-12 rounded-full bg-muted-foreground/20" />
+              </div>
+              <div className="px-6">
+                <div className="mb-4 flex items-center justify-between rounded-2xl bg-primary p-4 text-primary-foreground shadow-lg shadow-primary/20">
+                  <div>
+                    <div className="mb-1 text-xs font-semibold uppercase tracking-wider opacity-80">
+                      Current Action
+                    </div>
+                    <h3 className="text-xl font-bold">Pick up rider</h3>
+                  </div>
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/20">
+                    <Navigation className="h-6 w-6 fill-current" />
+                  </div>
+                </div>
+
+                <div className="mb-4 flex items-center justify-between border-b border-border py-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 text-lg font-bold text-white">
+                      {currentRequest.riderName.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div>
+                      <h4 className="text-lg font-bold">{currentRequest.riderName}</h4>
+                      <div className="text-sm text-muted-foreground">
+                        {currentRequest.payment} • {currentRequest.passengers} passenger
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-foreground"
+                      type="button"
+                    >
+                      <MessageSquare className="h-5 w-5" />
+                    </button>
+                    <button
+                      className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary/10 text-secondary"
+                      type="button"
+                    >
+                      <Phone className="h-5 w-5" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mb-4 grid grid-cols-3 gap-3">
+                  <button type="button" className="rounded-2xl bg-muted/70 p-4 text-center">
+                    <MessageSquare className="mx-auto mb-2 h-5 w-5" />
+                    <span className="text-xs font-bold">Message</span>
+                  </button>
+                  <button type="button" className="rounded-2xl bg-muted/70 p-4 text-center">
+                    <Navigation className="mx-auto mb-2 h-5 w-5" />
+                    <span className="text-xs font-bold">Share</span>
+                  </button>
+                  <button type="button" className="rounded-2xl bg-destructive/10 p-4 text-center text-destructive">
+                    <AlertTriangle className="mx-auto mb-2 h-5 w-5" />
+                    <span className="text-xs font-bold">SOS</span>
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => void completeRide()}
+                  className="mb-4 h-14 w-full rounded-2xl bg-primary text-lg font-bold text-primary-foreground shadow-lg shadow-primary/25"
+                  type="button"
+                >
+                  Arrived at Pickup
+                </button>
+
+                <button
+                  className="flex h-12 w-full items-center justify-center gap-2 rounded-xl font-bold text-destructive transition-colors hover:bg-destructive/5"
+                  type="button"
+                >
+                  <ShieldCheck className="h-5 w-5" /> Emergency SOS
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="absolute bottom-0 left-0 w-full border-t border-border bg-background">
+            <div className="grid h-20 grid-cols-4 items-center px-4 pb-4 pt-2">
+              <DriverBottomItem href="/driver" icon={Home} label="Home" active />
+              <DriverBottomItem href="/driver/rides" icon={Navigation} label="Rides" active={step !== "idle"} />
+              <DriverBottomItem href="/driver/wallet" icon={Wallet} label="Wallet" active={false} />
+              <DriverBottomItem href="/driver/account" icon={User} label="Account" active={false} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function DriverRidesMobilePage({ userId }: { userId: string }) {
+  const [activeTab, setActiveTab] = useState<"upcoming" | "past" | "cancelled">("past");
+  const [expandedTrip, setExpandedTrip] = useState<number | null>(0);
+  const [history, setHistory] = useState<DriverHistoryResponse>({
+    upcoming: [],
+    past: [],
+    cancelled: []
+  });
+
+  useEffect(() => {
+    fetchJson<DriverHistoryResponse>(`/driver/history/${userId}`)
+      .then((payload) => setHistory(payload))
+      .catch(() => setHistory({ upcoming: [], past: [], cancelled: [] }));
+  }, [userId]);
+
+  const currentList = history[activeTab];
+
+  return (
+    <DriverShell title="Ride History" active="rides">
+      <div className="mb-6 flex rounded-xl border border-border bg-card p-1">
+        {(["upcoming", "past", "cancelled"] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`flex-1 rounded-lg py-2 text-sm font-bold ${
+              activeTab === tab ? "bg-primary text-white shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
+            type="button"
+          >
+            {tab[0].toUpperCase() + tab.slice(1)}
+          </button>
+        ))}
+      </div>
+
+      {currentList.length ? (
+        <div className="space-y-4">
+          {currentList.map((trip, index) => {
+            const expanded = expandedTrip === index;
+            return (
+              <div key={`${trip.route}-${trip.time}`} className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+                <button
+                  className="w-full p-4 text-left hover:bg-muted/30"
+                  onClick={() => setExpandedTrip(expanded ? null : index)}
+                  type="button"
+                >
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-secondary/10 text-secondary">
+                        <CheckCircle2 className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold">{trip.rider}</div>
+                        <div className="text-[10px] text-muted-foreground">{trip.time}</div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-bold text-secondary">GHS {trip.net.toFixed(2)}</div>
+                      <div className="mt-1 inline-block rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold uppercase text-primary">
+                        -15% Comm
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <div className="flex max-w-[200px] items-center gap-1 truncate font-medium">
+                      <MapPin className="h-3 w-3" /> {trip.route}
+                    </div>
+                    {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </div>
+                </button>
+
+                {expanded ? (
+                  <div className="border-t border-border bg-muted/10 px-4 pb-4 pt-2">
+                    <div className="space-y-2 text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Gross Fare</span>
+                        <span className="font-medium">GHS {trip.gross.toFixed(2)}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Qiilu Commission (15%)</span>
+                        <span className="font-medium text-destructive">
+                          -GHS {(trip.gross - trip.net).toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between border-t border-border pt-2">
+                        <span className="font-bold">Net Earnings</span>
+                        <span className="font-bold text-secondary">GHS {trip.net.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <DriverEmpty
+          title={`No ${activeTab} rides yet`}
+          description="Driver trip activity will appear here as real rides move through the system."
+        />
+      )}
+    </DriverShell>
+  );
+}
+
+export function DriverWalletMobilePage({ userId }: { userId: string }) {
+  const [wallet, setWallet] = useState<DriverWalletResponse | null>(null);
+
+  const load = async () => {
+    try {
+      const payload = await fetchJson<DriverWalletResponse>(`/driver/wallet/${userId}`);
+      setWallet(payload);
+    } catch {
+      setWallet(null);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, [userId]);
+
+  const topUp = async () => {
+    const amount = window.prompt("Enter top up amount in GHS");
+    if (!amount) return;
+    await fetchJson(`/driver/wallet/${userId}/top-up`, {
+      method: "POST",
+      body: JSON.stringify({ amountGhs: Number(amount), provider: "MTN MoMo" })
+    });
+    void load();
+  };
+
+  const withdraw = async () => {
+    const amount = window.prompt("Enter withdrawal amount in GHS");
+    const accountRef = window.prompt("Enter payout MoMo number");
+    if (!amount || !accountRef) return;
+    await fetchJson(`/driver/wallet/${userId}/withdraw`, {
+      method: "POST",
+      body: JSON.stringify({ amountGhs: Number(amount), provider: "MTN MoMo", accountRef })
+    });
+    void load();
+  };
+
+  const recentTransactions = wallet?.transactions.slice(0, 5) ?? [];
+  const chartData = Array.from({ length: 7 }, (_, index) => {
+    const target = new Date();
+    target.setDate(target.getDate() - (6 - index));
+    const dayKey = target.toISOString().slice(0, 10);
+    const total =
+      wallet?.transactions
+        .filter((transaction) => transaction.createdAt.slice(0, 10) === dayKey)
+        .reduce((sum, transaction) => sum + transaction.amountGhs, 0) ?? 0;
+
+    return {
+      label: target.toLocaleDateString("en-GB", { weekday: "short" }).slice(0, 1),
+      total
+    };
+  });
+  const maxChart = Math.max(...chartData.map((item) => item.total), 1);
+
+  return (
+    <DriverShell title="Earnings Wallet" active="wallet">
+      {wallet ? (
+        <>
+          <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-secondary to-primary p-6 text-white shadow-xl shadow-secondary/20">
+            <div className="absolute right-0 top-0 h-48 w-48 translate-x-1/3 -translate-y-1/2 rounded-full bg-white/10 blur-3xl" />
+            <div className="relative z-10">
+              <div className="mb-2 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-white/90">
+                <Activity className="h-4 w-4" /> Net Earnings
+              </div>
+              <div className="mb-2 text-5xl font-extrabold tracking-tight">
+                <span className="mr-1 text-2xl opacity-80">GHS</span>
+                {wallet.wallet.totalBalanceGhs.toFixed(2)}
+              </div>
+              <div className="mb-6 inline-block rounded-full bg-white/20 px-3 py-1 text-sm font-medium">
+                Pending withdrawal: GHS {wallet.wallet.pendingWithdrawalGhs.toFixed(2)}
+              </div>
+              <button
+                onClick={() => void withdraw()}
+                className="h-14 w-full rounded-xl bg-white font-bold text-secondary-foreground shadow-lg"
+                type="button"
+              >
+                Cash Out Now
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-sm">
+            <h3 className="mb-4 text-lg font-bold">Today's Breakdown</h3>
+            <div className="space-y-3 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-muted-foreground">Trips Completed</span>
+                <span className="font-bold">{wallet.wallet.weeklyTrips}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-muted-foreground">Cash balance</span>
+                <span className="font-bold">GHS {wallet.wallet.cashGhs.toFixed(2)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-muted-foreground">MoMo balance</span>
+                <span className="font-bold">GHS {wallet.wallet.momoGhs.toFixed(2)}</span>
+              </div>
+              <div className="flex items-center justify-between border-t border-border pt-3">
+                <span className="font-bold">Completion Rate</span>
+                <span className="text-lg font-bold text-secondary">{wallet.wallet.completionRate}%</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6 rounded-2xl border border-border bg-card p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-secondary/10 text-secondary">
+                  <CreditCard className="h-6 w-6" />
+                </div>
+                <div>
+                  <h4 className="font-bold">Linked payout method</h4>
+                  <p className="text-sm text-muted-foreground">Mobile Money payout available</p>
+                </div>
+              </div>
+              <button onClick={() => void topUp()} className="text-sm font-bold text-primary" type="button">
+                Top up
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-sm">
+            <h3 className="mb-6 text-lg font-bold">Last 7 Days</h3>
+            <div className="mb-2 flex h-40 items-end justify-between gap-2">
+              {chartData.map((item, index) => (
+                <div key={`${item.label}-${index}`} className="flex h-full w-full items-end">
+                  <div
+                    className={`w-full rounded-t-md transition-colors ${
+                      index === chartData.length - 1 ? "bg-secondary" : "bg-secondary/20 hover:bg-secondary/40"
+                    }`}
+                    style={{ height: `${Math.max((item.total / maxChart) * 100, item.total > 0 ? 12 : 6)}%` }}
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-between border-t border-border pt-2 text-[10px] font-bold uppercase text-muted-foreground">
+              {chartData.map((item, index) => (
+                <span key={`${item.label}-stamp-${index}`} className={index === chartData.length - 1 ? "text-secondary" : ""}>
+                  {item.label}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-sm">
+            <h3 className="mb-4 text-lg font-bold">Recent Transactions</h3>
+            <div className="space-y-4">
+              {recentTransactions.length ? (
+                recentTransactions.map((transaction) => (
+                  <div key={transaction.id} className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+                        <Wallet className="h-5 w-5 text-foreground" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold">{transaction.kind.replace(/_/g, " ")}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {new Intl.DateTimeFormat("en-GB", {
+                            dateStyle: "medium",
+                            timeStyle: "short"
+                          }).format(new Date(transaction.createdAt))}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="font-bold">GHS {transaction.amountGhs.toFixed(2)}</div>
+                  </div>
+                ))
+              ) : (
+                <DriverEmpty
+                  title="No wallet activity yet"
+                  description="Transactions will appear here when top-ups, ride credits, and payouts happen."
+                />
+              )}
+            </div>
+          </div>
+        </>
+      ) : (
+        <DriverEmpty
+          title="Wallet unavailable"
+          description="Qiilu could not load the live driver wallet right now."
+        />
+      )}
+    </DriverShell>
+  );
+}
+
+export function DriverMessagesMobilePage() {
+  return (
+    <DriverShell title="Messages" active="account">
+      <DriverEmpty
+        title="No live driver chat threads yet"
+        description="Driver messaging UI is in place, but passenger-driver messaging is still waiting for a dedicated realtime chat backend."
+      />
+      <div className="mt-4 rounded-2xl border border-border bg-card p-5">
+        <div className="mb-4 flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary/10 text-secondary">
+            <HelpCircle className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="font-bold">Qiilu Partner Support</div>
+            <div className="text-xs text-muted-foreground">
+              Use the support tools from active trips for now.
+            </div>
+          </div>
+        </div>
+        <div className="flex gap-3">
+          <div className="flex-1 rounded-full bg-muted px-4">
+            <input
+              className="h-12 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground/60"
+              placeholder="Type a message..."
+              disabled
+            />
+          </div>
+          <button className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-white opacity-60" disabled type="button">
+            <Send className="h-5 w-5" />
+          </button>
+        </div>
+      </div>
+    </DriverShell>
+  );
+}
+
+export function DriverFavouritesMobilePage() {
+  const [activeTab, setActiveTab] = useState<"locations" | "passengers">("locations");
+
+  return (
+    <DriverShell title="Favourites" active="account">
+      <div className="mb-6 flex rounded-xl border border-border bg-card p-1">
+        <button
+          onClick={() => setActiveTab("locations")}
+          className={`flex-1 rounded-lg py-2 text-sm font-bold ${
+            activeTab === "locations" ? "bg-primary text-white shadow-sm" : "text-muted-foreground hover:text-foreground"
+          }`}
+          type="button"
+        >
+          Locations
+        </button>
+        <button
+          onClick={() => setActiveTab("passengers")}
+          className={`flex-1 rounded-lg py-2 text-sm font-bold ${
+            activeTab === "passengers" ? "bg-primary text-white shadow-sm" : "text-muted-foreground hover:text-foreground"
+          }`}
+          type="button"
+        >
+          Passengers
+        </button>
+      </div>
+
+      <DriverEmpty
+        title={activeTab === "locations" ? "No favourite locations yet" : "No favourite passengers yet"}
+        description={
+          activeTab === "locations"
+            ? "Driver bookmarks are not stored in the live backend yet, so Qiilu is keeping this screen honest until that feature lands."
+            : "Favourite passenger relationships are not persisted yet, so this screen stays empty instead of showing fake riders."
+        }
+      />
+      <div className="mt-4 rounded-2xl border border-border bg-card p-5">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-foreground">
+            {activeTab === "locations" ? <MapPin className="h-5 w-5" /> : <ShieldBan className="h-5 w-5" />}
+          </div>
+          <div>
+            <div className="font-bold">
+              {activeTab === "locations" ? "Save repeat destinations" : "Manage trusted riders"}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              The exact Qiilu UI is here. The live persistence layer is the only missing piece.
+            </div>
+          </div>
+        </div>
+      </div>
+    </DriverShell>
+  );
+}
+
+export function DriverAccountMobilePage({ sessionUser }: { sessionUser: SessionUser }) {
+  const [me, setMe] = useState<MeResponse["user"] | null>(null);
+  const [wallet, setWallet] = useState<DriverWalletResponse["wallet"] | null>(null);
+  const [kyc, setKyc] = useState<DriverKycResponse | null>(null);
+  const [activeSection, setActiveSection] = useState<"overview" | "documents">("documents");
+  const [documentType, setDocumentType] = useState("DRIVERS_LICENSE");
+  const [documentNumber, setDocumentNumber] = useState("");
+  const [legalName, setLegalName] = useState(sessionUser.name);
+  const [issuingCountry, setIssuingCountry] = useState("Ghana");
+  const [documentUrl, setDocumentUrl] = useState("");
+  const [kycMessage, setKycMessage] = useState<string | null>(null);
+  const [submittingKyc, setSubmittingKyc] = useState(false);
+
+  const loadAccount = async () => {
+    const [mePayload, walletPayload, kycPayload] = await Promise.all([
+      fetchJson<MeResponse>("/auth/me"),
+      fetchJson<DriverWalletResponse>(`/driver/wallet/${sessionUser.id}`),
+      fetchJson<DriverKycResponse>(`/driver/kyc/${sessionUser.id}`)
+    ]);
+
+    setMe(mePayload.user);
+    setWallet(walletPayload.wallet);
+    setKyc(kycPayload);
+  };
+
+  useEffect(() => {
+    loadAccount()
+      .catch(() => {
+        setMe(null);
+        setWallet(null);
+        setKyc(null);
+      });
+  }, [sessionUser.id]);
+
+  const initials = sessionUser.name
+    .split(" ")
+    .map((item) => item[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+  const logout = () => {
+    fetchJson("/auth/logout", { method: "POST" })
+      .catch(() => undefined)
+      .finally(() => {
+        clearSession();
+        window.location.href = "/login";
+      });
+  };
+
+  const links = [
+    { icon: Settings, label: "Edit Profile", href: "/driver/account" },
+    { icon: Car, label: "Vehicle Information", href: "/driver/account" },
+    { icon: FileText, label: "Documents & KYC", href: "/driver/kyc" },
+    { icon: CreditCard, label: "Bank & MoMo Details", href: "/driver/wallet" },
+    { icon: ShieldCheck, label: "Safety Hub", href: "/driver/messages" },
+    { icon: HelpCircle, label: "Help & Support", href: "/driver/messages" }
+  ];
+
+  const submitKyc = async () => {
+    setSubmittingKyc(true);
+    setKycMessage(null);
+
+    try {
+      await fetchJson(`/driver/kyc/${sessionUser.id}`, {
+        method: "POST",
+        body: JSON.stringify({
+          documentType,
+          documentNumber,
+          legalName,
+          issuingCountry,
+          documentUrl
+        })
+      });
+      setDocumentNumber("");
+      setDocumentUrl("");
+      await loadAccount();
+      setKycMessage("KYC submission received and queued for review.");
+    } catch (error) {
+      setKycMessage(error instanceof Error ? error.message : "Could not submit KYC.");
+    } finally {
+      setSubmittingKyc(false);
+    }
+  };
+
+  return (
+    <DriverShell title="Driver Profile" active="account">
+      <div className="relative rounded-[2rem] border border-border bg-card p-6 shadow-sm">
+        <div className="absolute right-4 top-4 flex items-center gap-1 rounded-full bg-secondary/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-secondary">
+          <CheckCircle2 className="h-3 w-3" /> {me?.kycStatus ?? "pending"}
+        </div>
+        <div className="mb-6 mt-2 flex flex-col items-center">
+          <div className="mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-tr from-blue-500 to-purple-600 text-3xl font-extrabold text-white shadow-lg border-4 border-background">
+            {initials}
+          </div>
+          <h2 className="text-2xl font-bold tracking-tight">{sessionUser.name}</h2>
+          <p className="text-sm font-medium text-muted-foreground">{sessionUser.phone}</p>
+          <div className="mt-3 rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
+            Driver Partner Pro
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2 border-t border-border pt-6">
+          <StatCard label="Status" value={statusText(me?.availability)} />
+          <StatCard label="Trips" value={wallet ? String(wallet.weeklyTrips) : "0"} />
+          <StatCard label="Balance" value={wallet ? `GHS ${wallet.totalBalanceGhs.toFixed(0)}` : "GHS 0"} />
+        </div>
+      </div>
+
+      <div className="mt-6 flex rounded-xl border border-border bg-card p-1">
+        <button
+          type="button"
+          onClick={() => setActiveSection("overview")}
+          className={`flex-1 rounded-lg py-2 text-sm font-bold ${activeSection === "overview" ? "bg-primary text-white shadow-sm" : "text-muted-foreground"}`}
+        >
+          Overview
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSection("documents")}
+          className={`flex-1 rounded-lg py-2 text-sm font-bold ${activeSection === "documents" ? "bg-primary text-white shadow-sm" : "text-muted-foreground"}`}
+        >
+          Documents
+        </button>
+      </div>
+
+      {activeSection === "overview" ? (
+        <div className="mt-6 rounded-[2rem] border border-border bg-card p-2 shadow-sm">
+        {links.map((link) => (
+          <Link
+            key={link.label}
+            href={link.href}
+            className="flex items-center justify-between rounded-xl p-4 transition-colors hover:bg-muted/50"
+          >
+            <div className="flex items-center gap-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-foreground">
+                <link.icon className="h-5 w-5" />
+              </div>
+              <span className="text-sm font-bold">{link.label}</span>
+            </div>
+            <span className="text-muted-foreground">›</span>
+          </Link>
+        ))}
+        </div>
+      ) : (
+        <div className="mt-6 space-y-4">
+          <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <div className="text-lg font-bold">Documents & KYC</div>
+                <div className="text-sm text-muted-foreground">Submit one verification document for review.</div>
+              </div>
+              <div className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase ${
+                (kyc?.kycStatus ?? "PENDING") === "APPROVED"
+                  ? "bg-secondary/10 text-secondary"
+                  : (kyc?.kycStatus ?? "PENDING") === "REJECTED"
+                    ? "bg-destructive/10 text-destructive"
+                    : "bg-primary/10 text-primary"
+              }`}>
+                {kyc?.kycStatus ?? "PENDING"}
+              </div>
+            </div>
+
+            <div className="mb-4 grid gap-3">
+              <label className="space-y-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Document type</span>
+                <select
+                  value={documentType}
+                  onChange={(event) => setDocumentType(event.target.value)}
+                  className="h-12 w-full rounded-xl border border-border bg-muted/50 px-4 text-sm outline-none"
+                >
+                  {(kyc?.requiredDocuments ?? ["DRIVERS_LICENSE", "GHANA_CARD", "VEHICLE_INSURANCE", "ROAD_WORTHINESS"]).map((item) => (
+                    <option key={item} value={item}>
+                      {item.replaceAll("_", " ")}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <MobileFieldInput label="Document Number" value={documentNumber} onChange={setDocumentNumber} placeholder="Enter document number" />
+              <MobileFieldInput label="Legal Name" value={legalName} onChange={setLegalName} placeholder="Name on document" />
+              <MobileFieldInput label="Issuing Country" value={issuingCountry} onChange={setIssuingCountry} placeholder="Ghana" />
+              <MobileFieldInput label="Document URL" value={documentUrl} onChange={setDocumentUrl} placeholder="https://..." />
+            </div>
+
+            {kycMessage ? <div className="mb-4 rounded-xl bg-muted/60 px-4 py-3 text-sm text-muted-foreground">{kycMessage}</div> : null}
+
+            <button
+              type="button"
+              disabled={submittingKyc}
+              onClick={() => void submitKyc()}
+              className="h-12 w-full rounded-xl bg-primary font-bold text-primary-foreground disabled:opacity-60"
+            >
+              {submittingKyc ? "Submitting..." : "Submit for review"}
+            </button>
+          </div>
+
+          <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+            <div className="mb-4 text-lg font-bold">Recent submissions</div>
+            <div className="space-y-3">
+              {(kyc?.submissions ?? []).length ? (
+                kyc!.submissions.map((submission) => (
+                  <div key={submission.id} className="rounded-xl border border-border p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-bold">{submission.documentType?.replaceAll("_", " ") ?? "Document"}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {submission.documentNumber ?? "No number"} • {new Date(submission.createdAt).toLocaleString()}
+                        </div>
+                      </div>
+                      <div className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${
+                        submission.status === "APPROVED"
+                          ? "bg-secondary/10 text-secondary"
+                          : submission.status === "REJECTED"
+                            ? "bg-destructive/10 text-destructive"
+                            : "bg-primary/10 text-primary"
+                      }`}>
+                        {submission.status}
+                      </div>
+                    </div>
+                    <a href={submission.documentUrl} target="_blank" rel="noreferrer" className="mt-3 inline-block text-xs font-bold text-primary">
+                      Open document
+                    </a>
+                  </div>
+                ))
+              ) : (
+                <DriverEmpty title="No KYC submissions yet" description="Your document review history will appear here after the first upload." />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-6 rounded-2xl border border-border bg-card p-2 shadow-sm">
+        <button
+          onClick={logout}
+          className="flex w-full items-center justify-between rounded-xl p-4 text-destructive transition-colors hover:bg-destructive/10"
+          type="button"
+        >
+          <div className="flex items-center gap-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+              <User className="h-5 w-5" />
+            </div>
+            <span className="text-sm font-bold">Sign Out</span>
+          </div>
+        </button>
+      </div>
+    </DriverShell>
+  );
+}
+
+function MobileFieldInput({
+  label,
+  value,
+  onChange,
+  placeholder
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <label className="space-y-2">
+      <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</span>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="h-12 w-full rounded-xl border border-border bg-muted/50 px-4 text-sm outline-none"
+      />
+    </label>
+  );
+}

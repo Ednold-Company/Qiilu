@@ -16,6 +16,12 @@ export type RouteEstimate = {
   route: [number, number][];
 };
 
+type OptionalRoutePoint = {
+  lat: number;
+  lng: number;
+  label?: string;
+};
+
 const mapboxToken = process.env.MAPBOX_ACCESS_TOKEN;
 
 function round(value: number, digits = 2) {
@@ -154,6 +160,18 @@ async function geocodeLocation(query: string) {
   throw new Error("Location could not be geocoded");
 }
 
+async function resolveRoutePoint(query: string, fallbackPoint?: OptionalRoutePoint | null) {
+  if (fallbackPoint) {
+    return {
+      lat: fallbackPoint.lat,
+      lng: fallbackPoint.lng,
+      label: fallbackPoint.label?.trim() || query || "Current location"
+    } satisfies RoutePoint;
+  }
+
+  return geocodeLocation(query);
+}
+
 async function routeWithMapbox(start: RoutePoint, end: RoutePoint) {
   if (!mapboxToken) {
     return null;
@@ -260,9 +278,16 @@ function routeFromCatalog(start: RoutePoint, end: RoutePoint) {
   };
 }
 
-export async function estimateRoute(pickupQuery: string, destinationQuery: string): Promise<RouteEstimate> {
-  const pickup = await geocodeLocation(pickupQuery);
-  const destination = await geocodeLocation(destinationQuery);
+export async function estimateRoute(
+  pickupQuery: string,
+  destinationQuery: string,
+  options?: {
+    pickupPoint?: OptionalRoutePoint | null;
+    destinationPoint?: OptionalRoutePoint | null;
+  }
+): Promise<RouteEstimate> {
+  const pickup = await resolveRoutePoint(pickupQuery, options?.pickupPoint);
+  const destination = await resolveRoutePoint(destinationQuery, options?.destinationPoint);
 
   try {
     const routed = mapboxToken

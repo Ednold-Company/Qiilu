@@ -2,10 +2,56 @@ import { Router } from "express";
 import type { AuthenticatedRequest } from "../middleware/auth.js";
 import { requireAuth } from "../middleware/auth.js";
 import { prisma } from "../lib/prisma.js";
-import { realtimeGateway } from "../lib/realtime.js";
+import { createRideBooking } from "../lib/ride-booking.js";
 import { estimateRoute, getRoutingStatus } from "../lib/routing.js";
 
 export const passengerRouter = Router();
+
+const passengerKycDocumentTypes = ["GHANA_CARD", "PASSPORT", "VOTERS_ID", "DRIVERS_LICENSE"] as const;
+
+function safeParsePassengerKycNotes(notes: string) {
+  try {
+    const parsed = JSON.parse(notes) as Record<string, unknown>;
+    return {
+      documentType: typeof parsed.documentType === "string" ? parsed.documentType : null,
+      documentNumber: typeof parsed.documentNumber === "string" ? parsed.documentNumber : null,
+      legalName: typeof parsed.legalName === "string" ? parsed.legalName : null,
+      selfieProvided: parsed.selfieProvided === true,
+      notes: typeof parsed.notes === "string" ? parsed.notes : null
+    };
+  } catch {
+    return null;
+  }
+}
+
+function formatPassengerKycSubmission(submission: {
+  id: string;
+  documentUrl: string;
+  notes: string | null;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  reviewedAt: Date | null;
+  reviewedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  const details = submission.notes ? safeParsePassengerKycNotes(submission.notes) : null;
+
+  return {
+    id: submission.id,
+    status: submission.status,
+    documentUrl: submission.documentUrl,
+    notes: submission.notes,
+    reviewedAt: submission.reviewedAt,
+    reviewedBy: submission.reviewedBy,
+    createdAt: submission.createdAt,
+    updatedAt: submission.updatedAt,
+    documentType: details?.documentType ?? null,
+    documentNumber: details?.documentNumber ?? null,
+    legalName: details?.legalName ?? null,
+    selfieProvided: details?.selfieProvided ?? false,
+    reviewerNotes: details?.notes ?? null
+  };
+}
 
 function toTrustedContacts(value: unknown) {
   if (!Array.isArray(value)) {
@@ -13,32 +59,6 @@ function toTrustedContacts(value: unknown) {
   }
 
   return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
-}
-
-function getPickupGuidance(pickup: string) {
-  const value = pickup.toLowerCase();
-
-  if (value.includes("airport")) {
-    return "Use the departures forecourt short-stay lane and keep your phone visible for plate verification.";
-  }
-
-  if (value.includes("mall")) {
-    return "Meet beside the main entrance security post to avoid pickup delays.";
-  }
-
-  if (value.includes("campus")) {
-    return "Stand near the main gate and confirm the 4-digit safety pin before boarding.";
-  }
-
-  return "Meet at a bright roadside landmark and confirm the driver plate plus your safety pin.";
-}
-
-function createSafetyPin() {
-  return String(Math.floor(1000 + Math.random() * 9000));
-}
-
-function createMomoReference() {
-  return `QMO-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 }
 
 passengerRouter.get("/vehicle-options", async (_request, response) => {
@@ -69,7 +89,11 @@ passengerRouter.get("/routing-status", (_request, response) => {
 });
 
 passengerRouter.post("/route-estimate", requireAuth, async (request: AuthenticatedRequest, response) => {
-  const body = request.body as { pickup?: string; destination?: string };
+  const body = request.body as {
+    pickup?: string;
+    destination?: string;
+    pickupCoords?: { lat?: number; lng?: number } | null;
+  };
 
   if (!body.pickup || !body.destination) {
     response.status(400).json({ message: "Pickup and destination are required" });
@@ -77,13 +101,66 @@ passengerRouter.post("/route-estimate", requireAuth, async (request: Authenticat
   }
 
   try {
-    const estimate = await estimateRoute(body.pickup, body.destination);
+    const estimate = await estimateRoute(body.pickup, body.destination, {
+      pickupPoint:
+        typeof body.pickupCoords?.lat === "number" && typeof body.pickupCoords?.lng === "number"
+          ? {
+              lat: body.pickupCoords.lat,
+              lng: body.pickupCoords.lng,
+              label: body.pickup
+            }
+          : null
+    });
     response.json({ estimate });
   } catch {
     response.status(422).json({
       message: "We could not calculate a real route for that destination yet. Try a more specific place name."
     });
   }
+});
+
+passengerRouter.get("/rides", requireAuth, async (request: AuthenticatedRequest, response) => {
+  const rides = await prisma.ride.findMany({
+    where: { passengerId: request.auth!.userId },
+    orderBy: { createdAt: "desc" },
+    take: 20,
+    include: {
+      driver: {
+        select: {
+          id: true,
+          name: true,
+          phone: true
+        }
+      },
+      vehicle: {
+        select: {
+          category: true,
+          serviceKind: true,
+          seats: true
+        }
+      }
+    }
+  });
+
+  response.json({
+    rides: rides.map((ride) => ({
+      id: ride.id,
+      status: ride.status,
+      pickup: ride.pickup,
+      destination: ride.destination,
+      requestSource: ride.requestSource,
+      distanceKm: ride.distanceKm,
+      etaMinutes: ride.etaMinutes,
+      estimatedFareGhs: ride.estimatedFareGhs,
+      actualFareGhs: ride.actualFareGhs,
+      paymentMethod: ride.paymentMethod,
+      momoProvider: ride.momoProvider,
+      passengers: ride.passengers,
+      createdAt: ride.createdAt,
+      driver: ride.driver,
+      vehicle: ride.vehicle
+    }))
+  });
 });
 
 passengerRouter.get("/experience", requireAuth, async (request: AuthenticatedRequest, response) => {
@@ -104,6 +181,118 @@ passengerRouter.get("/experience", requireAuth, async (request: AuthenticatedReq
       lowBandwidthMode: user.lowBandwidthMode,
       safetyShareEnabled: user.safetyShareEnabled
     }
+  });
+});
+
+passengerRouter.get("/kyc/:userId", requireAuth, async (request: AuthenticatedRequest, response) => {
+  if (request.auth?.userId !== request.params.userId) {
+    response.status(403).json({ message: "Forbidden" });
+    return;
+  }
+
+  const [user, submissions] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: request.params.userId },
+      select: {
+        id: true,
+        role: true,
+        kycStatus: true
+      }
+    }),
+    prisma.kycSubmission.findMany({
+      where: { userId: request.params.userId },
+      orderBy: { createdAt: "desc" },
+      take: 8
+    })
+  ]);
+
+  if (!user || user.role !== "PASSENGER") {
+    response.status(404).json({ message: "Passenger not found" });
+    return;
+  }
+
+  response.json({
+    kycStatus: user.kycStatus ?? "PENDING",
+    latestSubmission: submissions[0] ? formatPassengerKycSubmission(submissions[0]) : null,
+    submissions: submissions.map(formatPassengerKycSubmission),
+    requiredDocuments: passengerKycDocumentTypes
+  });
+});
+
+passengerRouter.post("/kyc/:userId", requireAuth, async (request: AuthenticatedRequest, response) => {
+  if (request.auth?.userId !== request.params.userId) {
+    response.status(403).json({ message: "Forbidden" });
+    return;
+  }
+
+  const body = request.body as {
+    documentType?: (typeof passengerKycDocumentTypes)[number];
+    documentNumber?: string;
+    legalName?: string;
+    documentUrl?: string;
+    selfieProvided?: boolean;
+    notes?: string;
+  };
+
+  if (!body.documentType || !passengerKycDocumentTypes.includes(body.documentType)) {
+    response.status(400).json({ message: "A valid document type is required" });
+    return;
+  }
+
+  if (!body.documentUrl?.trim()) {
+    response.status(400).json({ message: "Document URL is required" });
+    return;
+  }
+
+  if (!body.documentNumber?.trim()) {
+    response.status(400).json({ message: "Document number is required" });
+    return;
+  }
+
+  if (!body.legalName?.trim()) {
+    response.status(400).json({ message: "Legal name is required" });
+    return;
+  }
+
+  if (!body.selfieProvided) {
+    response.status(400).json({ message: "Selfie verification is required" });
+    return;
+  }
+
+  const latestSubmission = await prisma.kycSubmission.findFirst({
+    where: { userId: request.params.userId },
+    orderBy: { createdAt: "desc" }
+  });
+
+  if (latestSubmission?.status === "PENDING") {
+    response.status(409).json({ message: "Your previous KYC submission is still under review" });
+    return;
+  }
+
+  const submission = await prisma.kycSubmission.create({
+    data: {
+      userId: request.params.userId,
+      documentUrl: body.documentUrl.trim(),
+      notes: JSON.stringify({
+        documentType: body.documentType,
+        documentNumber: body.documentNumber.trim(),
+        legalName: body.legalName.trim(),
+        selfieProvided: true,
+        notes: body.notes?.trim() || null
+      })
+    }
+  });
+
+  await prisma.user.update({
+    where: { id: request.params.userId },
+    data: {
+      kycStatus: "PENDING"
+    }
+  });
+
+  response.status(201).json({
+    message: "Passenger KYC submission received",
+    submission: formatPassengerKycSubmission(submission)
   });
 });
 
@@ -144,6 +333,7 @@ passengerRouter.post("/rides", requireAuth, async (request: AuthenticatedRequest
   const body = request.body as {
     pickup?: string;
     destination?: string;
+    pickupCoords?: { lat?: number; lng?: number } | null;
     vehicleType?: string;
     paymentMethod?: "MOMO" | "CASH" | string;
     momoProvider?: string;
@@ -155,15 +345,9 @@ passengerRouter.post("/rides", requireAuth, async (request: AuthenticatedRequest
   const passenger = await prisma.user.findUnique({
     where: { id: request.auth?.userId }
   });
-  const vehicle = await prisma.vehicle.findFirst({
-    where: {
-      category: "CAR",
-      active: true
-    }
-  });
 
-  if (!passenger || !vehicle) {
-    response.status(400).json({ message: "Passenger or vehicle could not be resolved" });
+  if (!passenger) {
+    response.status(400).json({ message: "Passenger could not be resolved" });
     return;
   }
 
@@ -171,50 +355,32 @@ passengerRouter.post("/rides", requireAuth, async (request: AuthenticatedRequest
   const trustedContacts = toTrustedContacts(body.trustedContacts ?? passenger.trustedContacts);
   const lowBandwidthBooking = body.lowBandwidthMode ?? passenger.lowBandwidthMode;
   const safetyShareEnabled = body.safetyShareEnabled ?? passenger.safetyShareEnabled;
-  const momoProvider =
-    paymentMethod === "MOMO" ? body.momoProvider?.trim() || passenger.momoProvider || "MTN MoMo" : undefined;
   const pickupLocation = body.pickup ?? "Current location, East Legon";
   const destination = body.destination ?? "Unknown destination";
-  const safetyPin = safetyShareEnabled ? createSafetyPin() : null;
-  const pickupGuidance = getPickupGuidance(pickupLocation);
-  const momoReference = paymentMethod === "MOMO" ? createMomoReference() : null;
-  const estimate = await estimateRoute(pickupLocation, destination);
-
-  const newRide = await prisma.ride.create({
-    data: {
-      status: "SEARCHING",
-      pickup: pickupLocation,
-      destination,
-      pickupGuidance,
-      distanceKm: estimate.distanceKm,
-      etaMinutes: estimate.durationMinutes,
-      passengers: 1,
-      estimatedFareGhs: estimate.fareGhs,
-      paymentMethod,
-      momoProvider,
-      momoReference,
-      safetyPin,
-      trustedContactCount: trustedContacts.length,
-      lowBandwidthBooking,
-      passengerId: passenger.id,
-      vehicleId: vehicle.id
-    }
+  const { ride, estimate, payment, safety } = await createRideBooking({
+    passengerId: passenger.id,
+    pickup: pickupLocation,
+    destination,
+    pickupCoords:
+      typeof body.pickupCoords?.lat === "number" && typeof body.pickupCoords?.lng === "number"
+        ? {
+            lat: body.pickupCoords.lat,
+            lng: body.pickupCoords.lng
+          }
+        : null,
+    paymentMethod,
+    momoProvider: body.momoProvider,
+    requestSource: "APP",
+    trustedContacts,
+    lowBandwidthBooking,
+    safetyShareEnabled
   });
 
   response.status(201).json({
     message: "Ride request created",
-    ride: newRide,
-    safety: {
-      safetyPin,
-      pickupGuidance,
-      trustedContactCount: trustedContacts.length,
-      shareTripLive: safetyShareEnabled
-    },
-    payment: {
-      method: paymentMethod,
-      momoProvider,
-      momoReference
-    },
+    ride,
+    safety,
+    payment,
     estimate: {
       provider: estimate.provider,
       distanceKm: estimate.distanceKm,
@@ -224,14 +390,5 @@ passengerRouter.post("/rides", requireAuth, async (request: AuthenticatedRequest
       pickup: estimate.pickup,
       destination: estimate.destination
     }
-  });
-
-  realtimeGateway.emitRideRequested({
-    rideId: newRide.id,
-    passengerId: passenger.id,
-    pickup: newRide.pickup,
-    destination: newRide.destination,
-    fareGhs: newRide.estimatedFareGhs,
-    etaMinutes: newRide.etaMinutes
   });
 });

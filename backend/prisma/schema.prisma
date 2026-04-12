@@ -7,8 +7,15 @@ datasource db {
 }
 
 enum UserRole {
+  ADMIN
   PASSENGER
   DRIVER
+}
+
+enum DriverAvailability {
+  OFFLINE
+  AVAILABLE
+  ON_TRIP
 }
 
 enum RideStatus {
@@ -52,23 +59,72 @@ enum TransactionKind {
   TOP_UP
 }
 
+enum OtpPurpose {
+  LOGIN
+  SIGNUP
+  PASSWORDLESS
+}
+
+enum KycSubmissionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum UserKycStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum PayoutStatus {
+  PENDING
+  PROCESSING
+  PAID
+  REJECTED
+}
+
+enum IncidentStatus {
+  OPEN
+  INVESTIGATING
+  RESOLVED
+  CLOSED
+}
+
+enum IncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
 model User {
-  id               String         @id @default(cuid())
-  role             UserRole
-  name             String
-  phone            String         @unique
-  passwordHash     String
-  preferredPayment PaymentMethod?
-  momoProvider     String         @default("MTN MoMo")
-  trustedContacts  Json?
-  lowBandwidthMode Boolean        @default(false)
-  safetyShareEnabled Boolean      @default(true)
-  kycStatus        String?
-  wallet           Wallet?
-  passengerRides   Ride[]         @relation("PassengerRides")
-  driverRides      Ride[]         @relation("DriverRides")
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  id                 String             @id @default(cuid())
+  role               UserRole
+  name               String
+  phone              String             @unique
+  email              String?            @unique
+  passwordHash       String
+  preferredPayment   PaymentMethod?
+  momoProvider       String             @default("MTN MoMo")
+  trustedContacts    Json?
+  lowBandwidthMode   Boolean            @default(false)
+  safetyShareEnabled Boolean            @default(true)
+  kycStatus          UserKycStatus?
+  availability       DriverAvailability @default(OFFLINE)
+  lastKnownLat       Float?
+  lastKnownLng       Float?
+  lastSeenAt         DateTime?
+  wallet             Wallet?
+  passengerRides     Ride[]             @relation("PassengerRides")
+  driverRides        Ride[]             @relation("DriverRides")
+  otpCodes           OtpCode[]
+  kycSubmissions     KycSubmission[]
+  sentRideMessages   RideMessage[]      @relation("SentRideMessages")
+  reportedIncidents  SupportIncident[]  @relation("ReportedIncidents")
+  handledIncidents   SupportIncident[]  @relation("HandledIncidents")
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
 }
 
 model Vehicle {
@@ -87,43 +143,64 @@ model Vehicle {
 }
 
 model Ride {
-  id               String        @id @default(cuid())
-  status           RideStatus
-  requestSource    RequestSource @default(APP)
-  pickup           String
-  destination      String
-  pickupGuidance   String?
-  distanceKm       Float
-  etaMinutes       Int
-  passengers       Int
-  estimatedFareGhs Float
-  paymentMethod    PaymentMethod
-  momoProvider     String?
-  momoReference    String?
-  safetyPin        String?
-  trustedContactCount Int        @default(0)
-  lowBandwidthBooking Boolean    @default(false)
-  scheduledFor     DateTime?
-  passenger        User          @relation("PassengerRides", fields: [passengerId], references: [id])
-  passengerId      String
-  driver           User?         @relation("DriverRides", fields: [driverId], references: [id])
-  driverId         String?
-  vehicle          Vehicle       @relation(fields: [vehicleId], references: [id])
-  vehicleId        String
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  id                  String            @id @default(cuid())
+  status              RideStatus
+  requestSource       RequestSource     @default(APP)
+  pickup              String
+  destination         String
+  pickupGuidance      String?
+  distanceKm          Float
+  etaMinutes          Int
+  passengers          Int
+  estimatedFareGhs    Float
+  actualFareGhs       Float?
+  paymentMethod       PaymentMethod
+  momoProvider        String?
+  momoReference       String?
+  safetyPin           String?
+  trustedContactCount Int               @default(0)
+  lowBandwidthBooking Boolean           @default(false)
+  scheduledFor        DateTime?
+  assignmentScore     Float?
+  assignedAt          DateTime?
+  cancelledReason     String?
+  passenger           User              @relation("PassengerRides", fields: [passengerId], references: [id])
+  passengerId         String
+  driver              User?             @relation("DriverRides", fields: [driverId], references: [id])
+  driverId            String?
+  vehicle             Vehicle           @relation(fields: [vehicleId], references: [id])
+  vehicleId           String
+  messages            RideMessage[]
+  supportIncidents    SupportIncident[]
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+}
+
+model RideMessage {
+  id        String   @id @default(cuid())
+  ride      Ride     @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  rideId    String
+  sender    User     @relation("SentRideMessages", fields: [senderId], references: [id])
+  senderId  String
+  body      String
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([rideId, createdAt])
+  @@index([senderId, createdAt])
 }
 
 model Wallet {
-  id                   String        @id @default(cuid())
-  user                 User          @relation(fields: [userId], references: [id])
-  userId               String        @unique
-  balanceGhs           Float         @default(0)
-  cashGhs              Float         @default(0)
-  momoGhs              Float         @default(0)
-  pendingWithdrawalGhs Float         @default(0)
+  id                   String          @id @default(cuid())
+  user                 User            @relation(fields: [userId], references: [id])
+  userId               String          @unique
+  balanceGhs           Float           @default(0)
+  cashGhs              Float           @default(0)
+  momoGhs              Float           @default(0)
+  pendingWithdrawalGhs Float           @default(0)
   transactions         Transaction[]
-  updatedAt            DateTime      @updatedAt
+  payoutRequests       PayoutRequest[]
+  updatedAt            DateTime        @updatedAt
 }
 
 model Transaction {
@@ -133,5 +210,68 @@ model Transaction {
   kind      TransactionKind
   amountGhs Float
   channel   String
+  reference String?
   createdAt DateTime        @default(now())
+}
+
+model OtpCode {
+  id           String     @id @default(cuid())
+  phone        String?
+  email        String?
+  role         UserRole
+  purpose      OtpPurpose
+  codeHash     String
+  expiresAt    DateTime
+  consumedAt   DateTime?
+  deliveryHint String?
+  user         User?      @relation(fields: [userId], references: [id])
+  userId       String?
+  createdAt    DateTime   @default(now())
+
+  @@index([phone, role, purpose, expiresAt])
+  @@index([email, role, purpose, expiresAt])
+}
+
+model KycSubmission {
+  id          String              @id @default(cuid())
+  user        User                @relation(fields: [userId], references: [id])
+  userId      String
+  documentUrl String
+  notes       String?
+  status      KycSubmissionStatus @default(PENDING)
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+}
+
+model PayoutRequest {
+  id           String       @id @default(cuid())
+  wallet       Wallet       @relation(fields: [walletId], references: [id])
+  walletId     String
+  amountGhs    Float
+  provider     String
+  accountRef   String
+  status       PayoutStatus @default(PENDING)
+  providerRef  String?
+  reviewerNotes String?
+  processedAt  DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
+
+model SupportIncident {
+  id          String           @id @default(cuid())
+  ride        Ride?            @relation(fields: [rideId], references: [id])
+  rideId      String?
+  reporter    User             @relation("ReportedIncidents", fields: [reporterId], references: [id])
+  reporterId  String
+  handler     User?            @relation("HandledIncidents", fields: [handlerId], references: [id])
+  handlerId   String?
+  category    String
+  severity    IncidentSeverity @default(MEDIUM)
+  status      IncidentStatus   @default(OPEN)
+  description String
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 }

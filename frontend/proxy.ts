@@ -2,10 +2,15 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 const authRoutes = new Set(["/login", "/signup"]);
+const adminRoute = "/admin";
 const passengerRoute = "/passenger";
 const driverRoute = "/driver";
 
 function getDashboardForRole(role: string | undefined) {
+  if (role === "ADMIN") {
+    return adminRoute;
+  }
+
   if (role === "DRIVER") {
     return driverRoute;
   }
@@ -46,9 +51,19 @@ export function proxy(request: NextRequest) {
     }
   }
 
+  if (pathname.startsWith(adminRoute)) {
+    if (!hasAuth) {
+      return NextResponse.redirect(new URL("/login", request.url));
+    }
+
+    if (role !== "ADMIN") {
+      return NextResponse.redirect(new URL(getDashboardForRole(role), request.url));
+    }
+  }
+
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/login", "/signup", "/passenger/:path*", "/driver/:path*"]
+  matcher: ["/login", "/signup", "/passenger/:path*", "/driver/:path*", "/admin/:path*"]
 };

@@ -2,7 +2,7 @@ export type SessionUser = {
   id: string;
   name: string;
   phone: string;
-  role: "PASSENGER" | "DRIVER";
+  role: "ADMIN" | "PASSENGER" | "DRIVER";
 };
 
 export type AuthSession = {
@@ -11,6 +11,27 @@ export type AuthSession = {
 };
 
 const storageKey = "qiilu-auth-session";
+const routingCookieMaxAge = 60 * 60 * 24 * 7;
+
+function setRoutingCookie(name: string, value: string, maxAge = routingCookieMaxAge) {
+  const secure = typeof window !== "undefined" && window.location.protocol === "https:";
+  const cookie = [
+    `${name}=${encodeURIComponent(value)}`,
+    "Path=/",
+    "SameSite=Lax",
+    `Max-Age=${maxAge}`
+  ];
+
+  if (secure) {
+    cookie.push("Secure");
+  }
+
+  document.cookie = cookie.join("; ");
+}
+
+function clearRoutingCookie(name: string) {
+  document.cookie = `${name}=; Path=/; SameSite=Lax; Max-Age=0`;
+}
 
 export function getSession() {
   if (typeof window === "undefined") {
@@ -37,6 +58,8 @@ export function setSession(session: AuthSession) {
   }
 
   window.localStorage.setItem(storageKey, JSON.stringify(session));
+  setRoutingCookie("qiilu-auth", "1");
+  setRoutingCookie("qiilu-role", session.user.role);
 }
 
 export function clearSession() {
@@ -45,4 +68,6 @@ export function clearSession() {
   }
 
   window.localStorage.removeItem(storageKey);
+  clearRoutingCookie("qiilu-auth");
+  clearRoutingCookie("qiilu-role");
 }

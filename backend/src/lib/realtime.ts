@@ -3,7 +3,7 @@ import { WebSocket } from "ws";
 import { verifyAuthToken } from "./auth.js";
 import { estimateRoute } from "./routing.js";
 
-type Role = "PASSENGER" | "DRIVER";
+type Role = "ADMIN" | "PASSENGER" | "DRIVER";
 
 type ClientContext = {
   socket: WebSocket;
@@ -24,6 +24,16 @@ type TrackingSession = {
 class RealtimeGateway {
   private clients = new Map<string, ClientContext>();
   private tracking = new Map<string, TrackingSession>();
+
+  isUserConnected(userId: string, role?: Role) {
+    for (const client of this.clients.values()) {
+      if (client.userId === userId && (!role || client.role === role) && client.socket.readyState === WebSocket.OPEN) {
+        return true;
+      }
+    }
+
+    return false;
+  }
 
   registerConnection(socket: WebSocket, request: IncomingMessage) {
     const requestUrl = new URL(request.url ?? "/realtime", "http://localhost:4000");
@@ -77,6 +87,15 @@ class RealtimeGateway {
       type: "driver.queue.updated",
       payload: {
         rideId: payload.rideId
+      }
+    });
+  }
+
+  broadcastQueueRefresh() {
+    this.broadcastToRole("DRIVER", {
+      type: "driver.queue.updated",
+      payload: {
+        refreshedAt: new Date().toISOString()
       }
     });
   }
@@ -167,6 +186,31 @@ class RealtimeGateway {
         payload
       });
     }
+  }
+
+  emitChatMessage(payload: {
+    rideId: string;
+    passengerId: string;
+    driverId: string;
+    message: {
+      id: string;
+      body: string;
+      createdAt: string;
+      senderId: string;
+      senderName: string;
+      senderRole: Role;
+      readAt?: string | null;
+    };
+  }) {
+    this.sendToUser(payload.passengerId, {
+      type: "chat.message",
+      payload
+    });
+
+    this.sendToUser(payload.driverId, {
+      type: "chat.message",
+      payload
+    });
   }
 
   async startTracking(input: {

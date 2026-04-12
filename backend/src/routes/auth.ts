@@ -1,7 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import bcrypt from "bcryptjs";
+import { OtpPurpose, UserRole } from "@prisma/client";
+import { generateOtpCode, hashOtpCode, signAuthToken } from "../lib/auth.js";
+import { deliverOtp } from "../lib/mail.js";
 import { prisma } from "../lib/prisma.js";
-import { signAuthToken } from "../lib/auth.js";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth.js";
 
 export const authRouter = Router();
@@ -10,7 +13,7 @@ function setAuthCookies(
   response: {
     cookie: (name: string, value: string, options: Record<string, unknown>) => void;
   },
-  role: "PASSENGER" | "DRIVER"
+  role: UserRole
 ) {
   const secure = process.env.NODE_ENV === "production";
   const baseOptions = {
@@ -40,55 +43,15 @@ function clearAuthCookies(response: {
   response.clearCookie("qiilu-role", baseOptions);
 }
 
-authRouter.post("/signup", async (request, response) => {
-  const body = request.body as {
-    name?: string;
-    phone?: string;
-    password?: string;
-    role?: string;
-  };
-
-  if (!body.name || !body.phone || !body.password || !body.role) {
-    response.status(400).json({ message: "Name, phone, password, and role are required" });
-    return;
-  }
-
-  const role = body.role.toUpperCase() as "PASSENGER" | "DRIVER";
-  const existingUser = await prisma.user.findUnique({
-    where: { phone: body.phone }
-  });
-
-  if (existingUser) {
-    response.status(409).json({ message: "An account with that phone already exists" });
-    return;
-  }
-
-  const user = await prisma.user.create({
-    data: {
-      name: body.name,
-      phone: body.phone,
-      role,
-      passwordHash: await bcrypt.hash(body.password, 10),
-      preferredPayment: role === "PASSENGER" ? "MOMO" : undefined,
-      momoProvider: "MTN MoMo",
-      trustedContacts: [],
-      lowBandwidthMode: false,
-      safetyShareEnabled: true,
-      kycStatus: role === "DRIVER" ? "pending" : undefined,
-      wallet:
-        role === "DRIVER"
-          ? {
-              create: {
-                balanceGhs: 0,
-                cashGhs: 0,
-                momoGhs: 0,
-                pendingWithdrawalGhs: 0
-              }
-            }
-          : undefined
-    }
-  });
-
+async function issueSession(response: {
+  cookie: (name: string, value: string, options: Record<string, unknown>) => void;
+}, user: {
+  id: string;
+  name: string;
+  phone: string;
+  email?: string | null;
+  role: UserRole;
+}) {
   const token = signAuthToken({
     userId: user.id,
     role: user.role,
@@ -97,15 +60,88 @@ authRouter.post("/signup", async (request, response) => {
 
   setAuthCookies(response, user.role);
 
-  response.status(201).json({
+  return {
     token,
     user: {
       id: user.id,
       name: user.name,
       phone: user.phone,
+      email: user.email ?? null,
       role: user.role
     }
+  };
+}
+
+async function ensureDriverWallet(userId: string) {
+  const existing = await prisma.wallet.findUnique({
+    where: { userId }
   });
+
+  if (!existing) {
+    await prisma.wallet.create({
+      data: {
+        userId
+      }
+    });
+  }
+}
+
+authRouter.post("/signup", async (request, response) => {
+  const body = request.body as {
+    name?: string;
+    phone?: string;
+    email?: string;
+    password?: string;
+    role?: string;
+  };
+
+  if (!body.name || !body.phone || !body.email || !body.password || !body.role) {
+    response.status(400).json({ message: "Name, phone, email, password, and role are required" });
+    return;
+  }
+
+  const role = body.role.toUpperCase() as UserRole;
+  const existingUser = await prisma.user.findFirst({
+    where: {
+      OR: [
+        { phone: body.phone },
+        { email: body.email }
+      ]
+    }
+  });
+
+  if (existingUser) {
+    const normalizedEmail = body.email.trim().toLowerCase();
+    const message =
+      existingUser.email === normalizedEmail
+        ? "An account with that email already exists"
+        : "An account with that phone already exists";
+    response.status(409).json({ message });
+    return;
+  }
+
+  const user = await prisma.user.create({
+    data: {
+      name: body.name,
+      phone: body.phone,
+      email: body.email.trim().toLowerCase(),
+      role,
+      passwordHash: await bcrypt.hash(body.password, 10),
+      preferredPayment: role === "PASSENGER" ? "MOMO" : undefined,
+      momoProvider: "MTN MoMo",
+      trustedContacts: [],
+      lowBandwidthMode: false,
+      safetyShareEnabled: true,
+      kycStatus: role === "DRIVER" ? "PENDING" : undefined,
+      availability: role === "DRIVER" ? "OFFLINE" : undefined
+    }
+  });
+
+  if (role === "DRIVER") {
+    await ensureDriverWallet(user.id);
+  }
+
+  response.status(201).json(await issueSession(response, user));
 });
 
 authRouter.post("/login", async (request, response) => {
@@ -119,43 +155,194 @@ authRouter.post("/login", async (request, response) => {
   const user = await prisma.user.findFirst({
     where: {
       phone: body.phone,
-      role: body.role?.toUpperCase() as "PASSENGER" | "DRIVER" | undefined
+      role: body.role?.toUpperCase() as UserRole
     }
   });
 
   if (!user) {
-    response.status(401).json({
-      message: "Invalid credentials"
-    });
+    response.status(401).json({ message: "Invalid credentials" });
     return;
   }
 
   const passwordValid = await bcrypt.compare(body.password, user.passwordHash);
 
   if (!passwordValid) {
-    response.status(401).json({
-      message: "Invalid credentials"
-    });
+    response.status(401).json({ message: "Invalid credentials" });
     return;
   }
 
-  const token = signAuthToken({
-    userId: user.id,
-    role: user.role,
-    phone: user.phone
+  response.json(await issueSession(response, user));
+});
+
+authRouter.post("/request-otp", async (request, response) => {
+  const body = request.body as {
+    email?: string;
+    phone?: string;
+    role?: string;
+    purpose?: "LOGIN" | "SIGNUP" | "PASSWORDLESS";
+  };
+
+  if (!body.email || !body.role) {
+    response.status(400).json({ message: "Email and role are required" });
+    return;
+  }
+
+  const role = body.role.toUpperCase() as UserRole;
+  const purpose = (body.purpose?.toUpperCase() ?? "LOGIN") as OtpPurpose;
+  const email = body.email.trim().toLowerCase();
+  const phone = body.phone?.trim();
+  const existingUser = await prisma.user.findUnique({
+    where: { email }
   });
 
-  setAuthCookies(response, user.role);
+  if (purpose === "LOGIN" && (!existingUser || existingUser.role !== role)) {
+    response.status(404).json({ message: "No matching account found for email OTP login" });
+    return;
+  }
 
-  response.json({
-    token,
-    user: {
-      id: user.id,
-      name: user.name,
-      phone: user.phone,
-      role: user.role
+  if ((purpose === "SIGNUP" || purpose === "PASSWORDLESS") && !phone) {
+    response.status(400).json({ message: "Phone is required to request a signup code" });
+    return;
+  }
+
+  if (purpose === "SIGNUP" || purpose === "PASSWORDLESS") {
+    const conflictingUser = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email },
+          ...(phone ? [{ phone }] : [])
+        ]
+      }
+    });
+
+    if (conflictingUser) {
+      const message =
+        conflictingUser.email === email
+          ? "An account with that email already exists"
+          : "An account with that phone already exists";
+      response.status(409).json({ message });
+      return;
+    }
+  }
+
+  const code = generateOtpCode();
+  const expiresAt = new Date(Date.now() + 1000 * 60 * 10);
+  const delivery = await deliverOtp({
+    email,
+    code,
+    purpose
+  });
+
+  await prisma.otpCode.create({
+    data: {
+      email,
+      role,
+      purpose,
+      codeHash: hashOtpCode(code),
+      expiresAt,
+      deliveryHint: delivery.deliveryHint,
+      userId: existingUser?.id
     }
   });
+
+  response.json({
+    message: "OTP queued for email delivery",
+    provider: delivery.provider,
+    expiresAt,
+    developmentCode: delivery.developmentCode
+  });
+});
+
+authRouter.post("/verify-otp", async (request, response) => {
+  const body = request.body as {
+    email?: string;
+    role?: string;
+    code?: string;
+    purpose?: "LOGIN" | "SIGNUP" | "PASSWORDLESS";
+    name?: string;
+    phone?: string;
+    password?: string;
+  };
+
+  if (!body.email || !body.role || !body.code) {
+    response.status(400).json({ message: "Email, role, and code are required" });
+    return;
+  }
+
+  const role = body.role.toUpperCase() as UserRole;
+  const purpose = (body.purpose?.toUpperCase() ?? "LOGIN") as OtpPurpose;
+  const email = body.email.trim().toLowerCase();
+  const now = new Date();
+  const otp = await prisma.otpCode.findFirst({
+    where: {
+      email,
+      role,
+      purpose,
+      consumedAt: null,
+      expiresAt: {
+        gt: now
+      }
+    },
+    orderBy: { createdAt: "desc" }
+  });
+
+  if (!otp || otp.codeHash !== hashOtpCode(body.code)) {
+    response.status(401).json({ message: "Invalid or expired OTP" });
+    return;
+  }
+
+  await prisma.otpCode.update({
+    where: { id: otp.id },
+    data: { consumedAt: now }
+  });
+
+  let user = await prisma.user.findUnique({
+    where: { email }
+  });
+
+  if (!user && (purpose === "SIGNUP" || purpose === "PASSWORDLESS")) {
+    if (!body.phone) {
+      response.status(400).json({ message: "Phone is required to complete signup" });
+      return;
+    }
+
+    const normalizedPhone = body.phone.trim();
+    const existingPhoneOwner = await prisma.user.findUnique({
+      where: { phone: normalizedPhone }
+    });
+
+    if (existingPhoneOwner) {
+      response.status(409).json({ message: "An account with that phone already exists" });
+      return;
+    }
+
+    user = await prisma.user.create({
+      data: {
+        name: body.name?.trim() || `Qiilu ${role.toLowerCase()} ${normalizedPhone.slice(-4)}`,
+        phone: normalizedPhone,
+        email,
+        role,
+        passwordHash: await bcrypt.hash(body.password?.trim() || randomUUID(), 10),
+        preferredPayment: role === "PASSENGER" ? "MOMO" : undefined,
+        momoProvider: "MTN MoMo",
+        trustedContacts: [],
+        lowBandwidthMode: false,
+        safetyShareEnabled: true,
+        kycStatus: role === "DRIVER" ? "PENDING" : undefined
+      }
+    });
+
+    if (role === "DRIVER") {
+      await ensureDriverWallet(user.id);
+    }
+  }
+
+  if (!user || user.role !== role) {
+    response.status(404).json({ message: "No matching account found" });
+    return;
+  }
+
+  response.json(await issueSession(response, user));
 });
 
 authRouter.post("/logout", (_request, response) => {
@@ -178,12 +365,15 @@ authRouter.get("/me", requireAuth, async (request: AuthenticatedRequest, respons
       id: user.id,
       name: user.name,
       phone: user.phone,
+      email: user.email,
       role: user.role,
       preferredPayment: user.preferredPayment,
       momoProvider: user.momoProvider,
       trustedContacts: Array.isArray(user.trustedContacts) ? user.trustedContacts : [],
       lowBandwidthMode: user.lowBandwidthMode,
-      safetyShareEnabled: user.safetyShareEnabled
+      safetyShareEnabled: user.safetyShareEnabled,
+      kycStatus: user.kycStatus,
+      availability: user.availability
     }
   });
 });
