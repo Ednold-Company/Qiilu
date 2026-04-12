@@ -3,6 +3,7 @@ import type { AuthenticatedRequest } from "../middleware/auth.js";
 import { requireAuth } from "../middleware/auth.js";
 import { prisma } from "../lib/prisma.js";
 import { createRideBooking } from "../lib/ride-booking.js";
+import { realtimeGateway } from "../lib/realtime.js";
 import { estimateRoute, getRoutingStatus } from "../lib/routing.js";
 
 export const passengerRouter = Router();
@@ -418,5 +419,51 @@ passengerRouter.post("/rides", requireAuth, async (request: AuthenticatedRequest
       pickup: estimate.pickup,
       destination: estimate.destination
     }
+  });
+});
+
+passengerRouter.post("/rides/:rideId/cancel", requireAuth, async (request: AuthenticatedRequest, response) => {
+  const rideId = Array.isArray(request.params.rideId) ? request.params.rideId[0] : request.params.rideId;
+  const ride = await prisma.ride.findUnique({
+    where: { id: rideId }
+  });
+
+  if (!ride || ride.passengerId !== request.auth?.userId) {
+    response.status(404).json({ message: "Ride not found" });
+    return;
+  }
+
+  if (!["SEARCHING", "SCHEDULED", "ACCEPTED"].includes(ride.status)) {
+    response.status(409).json({ message: "This ride can no longer be cancelled from the passenger app" });
+    return;
+  }
+
+  const cancelledRide = await prisma.ride.update({
+    where: { id: ride.id },
+    data: {
+      status: "CANCELLED",
+      cancelledReason:
+        ride.status === "ACCEPTED"
+          ? "Passenger cancelled after assignment"
+          : "Passenger cancelled search"
+    }
+  });
+
+  if (ride.driverId) {
+    await prisma.user.update({
+      where: { id: ride.driverId },
+      data: { availability: "AVAILABLE" }
+    });
+  }
+
+  realtimeGateway.emitRideCancelled({
+    rideId: cancelledRide.id,
+    passengerId: cancelledRide.passengerId,
+    driverId: cancelledRide.driverId
+  });
+
+  response.json({
+    message: "Ride cancelled",
+    ride: cancelledRide
   });
 });

@@ -61,6 +61,8 @@ export function PassengerMobileExact({
   onPaymentMethodChange,
   canBook,
   onRequestRide,
+  onCancelRide,
+  isCancelling = false,
   initials,
   rideSummary
 }: {
@@ -84,6 +86,8 @@ export function PassengerMobileExact({
   onPaymentMethodChange: (value: "MOMO" | "CASH") => void;
   canBook: boolean;
   onRequestRide: () => void;
+  onCancelRide?: () => void;
+  isCancelling?: boolean;
   initials: string;
   rideSummary: RideSummary | null;
 }) {
@@ -211,8 +215,13 @@ export function PassengerMobileExact({
         {step === "searching" ? (
           <div className="bg-background/82 backdrop-blur-xl rounded-t-[2rem] border-t border-border/70 p-8 pb-24 shadow-[0_-10px_40px_rgba(0,0,0,0.16)] pointer-events-auto flex flex-col items-center justify-center min-h-[300px]">
             <div className="w-24 h-24 rounded-full border-4 border-muted border-t-primary animate-spin mb-6" />
-                  <h2 className="text-xl font-bold mb-2">Connecting to nearby drivers...</h2>
+            <h2 className="text-xl font-bold mb-2">Connecting to nearby drivers...</h2>
             <p className="text-muted-foreground text-center">Finding the closest Qiilu Car for you</p>
+            {onCancelRide ? (
+              <Button variant="outline" className="mt-6 rounded-2xl" onClick={onCancelRide} disabled={isCancelling}>
+                {isCancelling ? "Cancelling..." : "Cancel request"}
+              </Button>
+            ) : null}
           </div>
         ) : null}
 

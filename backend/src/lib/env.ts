@@ -50,4 +50,16 @@ export function validateRuntimeEnv() {
   if (paymentProvider === "paystack") {
     requireEnv("PAYSTACK_SECRET_KEY");
   }
+
+  if (process.env.SENTRY_DSN?.trim()) {
+    const tracesSampleRate = process.env.SENTRY_TRACES_SAMPLE_RATE?.trim();
+
+    if (tracesSampleRate) {
+      const parsed = Number(tracesSampleRate);
+
+      if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
+        throw new Error("SENTRY_TRACES_SAMPLE_RATE must be between 0 and 1");
+      }
+    }
+  }
 }

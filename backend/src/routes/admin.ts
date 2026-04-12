@@ -5,6 +5,7 @@ import {
   PayoutStatus,
   RideStatus
 } from "@prisma/client";
+import { logAdminAction } from "../lib/audit-log.js";
 import { prisma } from "../lib/prisma.js";
 import { markPayoutPaid } from "../lib/payments.js";
 import {
@@ -168,6 +169,15 @@ adminRouter.post("/kyc/:submissionId/review", async (request: AuthenticatedReque
     }
   });
 
+  logAdminAction({
+    requestId: request.requestId,
+    actorId: request.auth!.userId,
+    action: "kyc.review",
+    targetType: "kyc_submission",
+    targetId: submission.id,
+    metadata: { status: body.status }
+  });
+
   response.json({
     message: `KYC ${body.status.toLowerCase()} successfully`,
     submission
@@ -208,6 +218,15 @@ adminRouter.post("/payouts/:payoutId/process", async (_request: AuthenticatedReq
     data: { status: PayoutStatus.PROCESSING }
   });
 
+  logAdminAction({
+    requestId: _request.requestId,
+    actorId: _request.auth!.userId,
+    action: "payout.process",
+    targetType: "payout_request",
+    targetId: payout.id,
+    metadata: { status: "PROCESSING" }
+  });
+
   response.json({
     message: "Payout moved into processing",
     payout
@@ -224,6 +243,14 @@ adminRouter.post("/payouts/:payoutId/approve", async (request: AuthenticatedRequ
   }
 
   const providerResult = await markPayoutPaid(payoutId, body.reviewerNotes);
+  logAdminAction({
+    requestId: request.requestId,
+    actorId: request.auth!.userId,
+    action: "payout.approve",
+    targetType: "payout_request",
+    targetId: payoutId,
+    metadata: { reviewerNotes: body.reviewerNotes ?? null }
+  });
   response.json({
     message: "Payout marked as paid",
     providerResult
@@ -269,6 +296,15 @@ adminRouter.post("/payouts/:payoutId/reject", async (request: AuthenticatedReque
       }
     })
   ]);
+
+  logAdminAction({
+    requestId: request.requestId,
+    actorId: request.auth!.userId,
+    action: "payout.reject",
+    targetType: "payout_request",
+    targetId: payout.id,
+    metadata: { reviewerNotes: body.reviewerNotes?.trim() ?? null }
+  });
 
   response.json({ message: "Payout rejected and funds returned to the wallet" });
 });
@@ -329,6 +365,15 @@ adminRouter.post("/incidents/:incidentId/resolve", async (request: Authenticated
       status: nextStatus,
       handlerId: request.auth!.userId
     }
+  });
+
+  logAdminAction({
+    requestId: request.requestId,
+    actorId: request.auth!.userId,
+    action: "incident.resolve",
+    targetType: "support_incident",
+    targetId: incident.id,
+    metadata: { status: nextStatus }
   });
 
   response.json({

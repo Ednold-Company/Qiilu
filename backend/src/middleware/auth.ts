@@ -1,8 +1,9 @@
 import type { NextFunction, Request, Response } from "express";
 import { verifyAuthToken } from "../lib/auth.js";
 import type { UserRole } from "@prisma/client";
+import type { RequestWithContext } from "./request-context.js";
 
-export type AuthenticatedRequest = Request & {
+export type AuthenticatedRequest = RequestWithContext & {
   auth?: {
     userId: string;
     role: UserRole;

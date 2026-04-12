@@ -136,6 +136,7 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
   const [isEstimating, setIsEstimating] = useState(false);
   const [isSavingExperience, setIsSavingExperience] = useState(false);
   const [isBooking, setIsBooking] = useState(false);
+  const [isCancellingRide, setIsCancellingRide] = useState(false);
   const [isReporting, setIsReporting] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(true);
@@ -399,6 +400,29 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
       setFeedback(error instanceof Error ? error.message : "Ride request failed.");
     } finally {
       setIsBooking(false);
+    }
+  };
+
+  const cancelRide = async () => {
+    if (!activeRide) {
+      return;
+    }
+
+    setIsCancellingRide(true);
+    setFeedback(null);
+
+    try {
+      await fetchJson(`/passenger/rides/${activeRide.ride.id}/cancel`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setActiveRide(null);
+      setDriverLocation(null);
+      setFeedback("Ride request cancelled.");
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Could not cancel the ride right now.");
+    } finally {
+      setIsCancellingRide(false);
     }
   };
 
@@ -881,6 +905,8 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
         onPaymentMethodChange={setPaymentMethod}
         canBook={canBook}
         onRequestRide={createRide}
+        onCancelRide={mobileStep === "searching" ? cancelRide : undefined}
+        isCancelling={isCancellingRide}
         initials={initials}
         rideSummary={
           mobileStep === "riding"
@@ -1043,6 +1069,9 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
                 <div className="mb-6 h-24 w-24 animate-spin rounded-full border-4 border-muted border-t-primary" />
                 <h2 className="mb-2 text-xl font-bold">Connecting to nearby drivers...</h2>
                 <p className="text-muted-foreground">Finding the closest Qiilu Car for you</p>
+                <Button variant="outline" className="mt-6 rounded-2xl" onClick={cancelRide} disabled={isCancellingRide}>
+                  {isCancellingRide ? "Cancelling..." : "Cancel request"}
+                </Button>
               </div>
             ) : (
               <>

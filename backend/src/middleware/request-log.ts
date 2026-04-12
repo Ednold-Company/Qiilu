@@ -1,12 +1,13 @@
-import type { NextFunction, Request, Response } from "express";
+import type { NextFunction, Response } from "express";
+import type { RequestWithContext } from "./request-context.js";
 
-export function requestLog(request: Request, response: Response, next: NextFunction) {
+export function requestLog(request: RequestWithContext, response: Response, next: NextFunction) {
   const startedAt = Date.now();
 
   response.on("finish", () => {
     const durationMs = Date.now() - startedAt;
     console.log(
-      `[qiilu] ${request.method} ${request.originalUrl} ${response.statusCode} ${durationMs}ms`
+      `[qiilu] [${request.requestId ?? "no-id"}] ${request.method} ${request.originalUrl} ${response.statusCode} ${durationMs}ms`
     );
   });
 

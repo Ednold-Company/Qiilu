@@ -3,6 +3,8 @@ import "dotenv/config";
 import express from "express";
 import { requestLog } from "./middleware/request-log.js";
 import { rateLimit } from "./middleware/rate-limit.js";
+import { requestContext } from "./middleware/request-context.js";
+import { errorHandler } from "./middleware/error-handler.js";
 import { getFrontendOrigins } from "./lib/env.js";
 import { authRouter } from "./routes/auth.js";
 import { adminRouter } from "./routes/admin.js";
@@ -30,6 +32,7 @@ app.use(cors({
   credentials: true
 }));
 app.set("trust proxy", 1);
+app.use(requestContext);
 app.use(requestLog);
 app.use(rateLimit({ windowMs: 60_000, max: 180 }));
 app.use("/payments/webhooks/paystack", express.raw({ type: "application/json" }), paymentsRouter);
@@ -52,3 +55,4 @@ app.use("/messages", messagesRouter);
 app.use("/admin", adminRouter);
 app.use("/support", supportRouter);
 app.use("/ussd", ussdRouter);
+app.use(errorHandler);
