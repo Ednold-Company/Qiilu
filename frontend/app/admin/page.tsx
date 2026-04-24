@@ -77,11 +77,21 @@ function parseKycNotes(notes: string | null) {
       documentNumber: typeof parsed.documentNumber === "string" ? parsed.documentNumber : null,
       legalName: typeof parsed.legalName === "string" ? parsed.legalName : null,
       issuingCountry: typeof parsed.issuingCountry === "string" ? parsed.issuingCountry : null,
+      selfieProvided: parsed.selfieProvided === true,
+      selfieImageUrl: typeof parsed.selfieImageUrl === "string" ? parsed.selfieImageUrl : null,
       notes: typeof parsed.notes === "string" ? parsed.notes : null
     };
   } catch {
     return { notes };
   }
+}
+
+function isImageReference(value: string | null | undefined) {
+  if (!value) {
+    return false;
+  }
+
+  return value.startsWith("data:image/") || /\.(png|jpe?g|webp|gif|bmp|svg)(\?.*)?$/i.test(value);
 }
 
 type PayoutRequest = {
@@ -155,6 +165,7 @@ export default function AdminPage() {
     drivers: []
   });
   const [kyc, setKyc] = useState<KycSubmission[]>([]);
+  const [kycReviewNotes, setKycReviewNotes] = useState<Record<string, string>>({});
   const [payouts, setPayouts] = useState<PayoutRequest[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [message, setMessage] = useState("Connecting to Qiilu control room...");
@@ -207,9 +218,14 @@ export default function AdminPage() {
   const reviewKyc = async (submissionId: string, status: "APPROVED" | "REJECTED") => {
     await fetchJson(`/admin/kyc/${submissionId}/review`, {
       method: "POST",
-      body: JSON.stringify({ status })
+      body: JSON.stringify({ status, notes: kycReviewNotes[submissionId]?.trim() || undefined })
     });
     await loadAdminData();
+    setKycReviewNotes((current) => {
+      const next = { ...current };
+      delete next[submissionId];
+      return next;
+    });
     setMessage(`KYC ${status.toLowerCase()} successfully.`);
   };
 
@@ -406,11 +422,96 @@ export default function AdminPage() {
                       <div>Name: {details?.legalName ?? "Not specified"}</div>
                       <div>Country: {details?.issuingCountry ?? "Not specified"}</div>
                     </div>
+                    <div className="mb-4 grid gap-3 md:grid-cols-2">
+                      <div className="rounded-2xl border border-border/80 bg-muted/30 p-3">
+                        <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                          Document preview
+                        </div>
+                        {isImageReference(submission.documentUrl) ? (
+                          <img
+                            src={submission.documentUrl}
+                            alt={`${submission.user.name} KYC document`}
+                            className="h-36 w-full rounded-xl object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-36 items-center justify-center rounded-xl bg-background text-sm text-muted-foreground">
+                            Preview unavailable for this file type
+                          </div>
+                        )}
+                      </div>
+                      <div className="rounded-2xl border border-border/80 bg-muted/30 p-3">
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                            Selfie check
+                          </div>
+                          <span className="text-xs font-semibold text-muted-foreground">
+                            {details?.selfieProvided ? "Provided" : "Missing"}
+                          </span>
+                        </div>
+                        {details?.selfieImageUrl ? (
+                          <img
+                            src={details.selfieImageUrl}
+                            alt={`${submission.user.name} selfie verification`}
+                            className="h-36 w-full rounded-xl object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-36 items-center justify-center rounded-xl bg-background text-sm text-muted-foreground">
+                            No selfie captured yet
+                          </div>
+                        )}
+                      </div>
+                    </div>
                     {details?.notes ? <p className="mb-4 text-sm text-muted-foreground">{details.notes}</p> : null}
+                    <div className="mb-4 rounded-2xl border border-border/80 bg-muted/30 p-4">
+                      <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                        Selfie comparison note
+                      </div>
+                      <div className="mb-3 flex flex-wrap gap-2">
+                        {[
+                          "Selfie matches document",
+                          "Selfie does not match document",
+                          "Selfie unclear, needs manual follow-up"
+                        ].map((option) => (
+                          <button
+                            key={option}
+                            type="button"
+                            className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                              kycReviewNotes[submission.id] === option
+                                ? "border-primary bg-primary/10 text-primary"
+                                : "border-border bg-background text-muted-foreground"
+                            }`}
+                            onClick={() =>
+                              setKycReviewNotes((current) => ({
+                                ...current,
+                                [submission.id]: option
+                              }))
+                            }
+                          >
+                            {option}
+                          </button>
+                        ))}
+                      </div>
+                      <textarea
+                        value={kycReviewNotes[submission.id] ?? ""}
+                        onChange={(event) =>
+                          setKycReviewNotes((current) => ({
+                            ...current,
+                            [submission.id]: event.target.value
+                          }))
+                        }
+                        placeholder="Add any extra review context for this submission"
+                        className="min-h-24 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none"
+                      />
+                    </div>
                     <div className="flex flex-wrap gap-2">
                       <Link href={submission.documentUrl} target="_blank">
                         <Button variant="outline" className="rounded-full">Open document</Button>
                       </Link>
+                      {details?.selfieImageUrl ? (
+                        <Link href={details.selfieImageUrl} target="_blank">
+                          <Button variant="outline" className="rounded-full">Open selfie</Button>
+                        </Link>
+                      ) : null}
                       <Button variant="outline" className="rounded-full" onClick={() => reviewKyc(submission.id, "REJECTED")}>
                         Reject
                       </Button>

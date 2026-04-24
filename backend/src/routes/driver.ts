@@ -5,6 +5,11 @@ import { autoAssignRide, releaseDriverFromRide, syncDriverAvailability } from ".
 import { requestDriverPayout, topUpDriverWallet } from "../lib/payments.js";
 import { prisma } from "../lib/prisma.js";
 import { realtimeGateway } from "../lib/realtime.js";
+import {
+  isUploadedDocumentTooLarge,
+  isValidDocumentReference,
+  normalizeDocumentReference
+} from "../lib/document-upload.js";
 
 export const driverRouter = Router();
 
@@ -34,7 +39,8 @@ function formatKycSubmission(submission: {
     documentType: details?.documentType ?? null,
     documentNumber: details?.documentNumber ?? null,
     legalName: details?.legalName ?? null,
-    issuingCountry: details?.issuingCountry ?? null
+    issuingCountry: details?.issuingCountry ?? null,
+    reviewerNotes: details?.notes ?? null
   };
 }
 
@@ -45,7 +51,8 @@ function safeParseKycNotes(notes: string) {
       documentType: typeof parsed.documentType === "string" ? parsed.documentType : null,
       documentNumber: typeof parsed.documentNumber === "string" ? parsed.documentNumber : null,
       legalName: typeof parsed.legalName === "string" ? parsed.legalName : null,
-      issuingCountry: typeof parsed.issuingCountry === "string" ? parsed.issuingCountry : null
+      issuingCountry: typeof parsed.issuingCountry === "string" ? parsed.issuingCountry : null,
+      notes: typeof parsed.notes === "string" ? parsed.notes : null
     };
   } catch {
     return null;
@@ -509,7 +516,19 @@ driverRouter.post("/kyc/:userId", requireAuth, async (request: AuthenticatedRequ
   };
 
   if (!body.documentUrl) {
-    response.status(400).json({ message: "Document URL is required" });
+    response.status(400).json({ message: "A document upload is required" });
+    return;
+  }
+
+  const documentReference = normalizeDocumentReference(body.documentUrl);
+
+  if (!isValidDocumentReference(documentReference)) {
+    response.status(400).json({ message: "Upload a valid image or PDF document" });
+    return;
+  }
+
+  if (isUploadedDocumentTooLarge(documentReference)) {
+    response.status(400).json({ message: "Document upload is too large. Use a smaller file." });
     return;
   }
 
@@ -551,7 +570,7 @@ driverRouter.post("/kyc/:userId", requireAuth, async (request: AuthenticatedRequ
   const submission = await prisma.kycSubmission.create({
     data: {
       userId: request.params.userId,
-      documentUrl: body.documentUrl,
+      documentUrl: documentReference,
       notes: serializedNotes
     }
   });

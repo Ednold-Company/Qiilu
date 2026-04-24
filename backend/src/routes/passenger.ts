@@ -6,6 +6,11 @@ import { createRideBooking } from "../lib/ride-booking.js";
 import { buildVehicleFareProfile } from "../lib/pricing.js";
 import { realtimeGateway } from "../lib/realtime.js";
 import { estimateRoute, getRoutingStatus } from "../lib/routing.js";
+import {
+  isUploadedDocumentTooLarge,
+  isValidDocumentReference,
+  normalizeDocumentReference
+} from "../lib/document-upload.js";
 
 export const passengerRouter = Router();
 
@@ -19,6 +24,7 @@ function safeParsePassengerKycNotes(notes: string) {
       documentNumber: typeof parsed.documentNumber === "string" ? parsed.documentNumber : null,
       legalName: typeof parsed.legalName === "string" ? parsed.legalName : null,
       selfieProvided: parsed.selfieProvided === true,
+      selfieImageUrl: typeof parsed.selfieImageUrl === "string" ? parsed.selfieImageUrl : null,
       notes: typeof parsed.notes === "string" ? parsed.notes : null
     };
   } catch {
@@ -51,6 +57,7 @@ function formatPassengerKycSubmission(submission: {
     documentNumber: details?.documentNumber ?? null,
     legalName: details?.legalName ?? null,
     selfieProvided: details?.selfieProvided ?? false,
+    selfieImageUrl: details?.selfieImageUrl ?? null,
     reviewerNotes: details?.notes ?? null
   };
 }
@@ -280,6 +287,7 @@ passengerRouter.post("/kyc/:userId", requireAuth, async (request: AuthenticatedR
     legalName?: string;
     documentUrl?: string;
     selfieProvided?: boolean;
+    selfieImageUrl?: string;
     notes?: string;
   };
 
@@ -289,7 +297,19 @@ passengerRouter.post("/kyc/:userId", requireAuth, async (request: AuthenticatedR
   }
 
   if (!body.documentUrl?.trim()) {
-    response.status(400).json({ message: "Document URL is required" });
+    response.status(400).json({ message: "A document upload is required" });
+    return;
+  }
+
+  const documentReference = normalizeDocumentReference(body.documentUrl);
+
+  if (!isValidDocumentReference(documentReference)) {
+    response.status(400).json({ message: "Upload a valid image or PDF document" });
+    return;
+  }
+
+  if (isUploadedDocumentTooLarge(documentReference)) {
+    response.status(400).json({ message: "Document upload is too large. Use a smaller file." });
     return;
   }
 
@@ -308,6 +328,23 @@ passengerRouter.post("/kyc/:userId", requireAuth, async (request: AuthenticatedR
     return;
   }
 
+  if (!body.selfieImageUrl?.trim()) {
+    response.status(400).json({ message: "A selfie capture is required" });
+    return;
+  }
+
+  const selfieReference = normalizeDocumentReference(body.selfieImageUrl);
+
+  if (!isValidDocumentReference(selfieReference)) {
+    response.status(400).json({ message: "Upload a valid selfie image" });
+    return;
+  }
+
+  if (isUploadedDocumentTooLarge(selfieReference)) {
+    response.status(400).json({ message: "Selfie upload is too large. Use a smaller file." });
+    return;
+  }
+
   const latestSubmission = await prisma.kycSubmission.findFirst({
     where: { userId: request.params.userId },
     orderBy: { createdAt: "desc" }
@@ -321,12 +358,13 @@ passengerRouter.post("/kyc/:userId", requireAuth, async (request: AuthenticatedR
   const submission = await prisma.kycSubmission.create({
     data: {
       userId: request.params.userId,
-      documentUrl: body.documentUrl.trim(),
+      documentUrl: documentReference,
       notes: JSON.stringify({
         documentType: body.documentType,
         documentNumber: body.documentNumber.trim(),
         legalName: body.legalName.trim(),
         selfieProvided: true,
+        selfieImageUrl: selfieReference,
         notes: body.notes?.trim() || null
       })
     }

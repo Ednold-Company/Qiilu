@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Camera, CheckCircle2, ChevronLeft, FileText, ShieldCheck, UploadCloud, User, CreditCard, Car } from "lucide-react";
 import { DriverDesktopShell } from "@/components/qiilu/driver-desktop-routes";
 import { DriverShell } from "@/components/qiilu/driver-mobile-routes";
@@ -9,18 +9,19 @@ import { PassengerDesktopShell } from "@/components/qiilu/passenger-desktop-rout
 import { MobileShell } from "@/components/qiilu/passenger-mobile-routes";
 import { fetchJson } from "@/lib/api";
 import type { SessionUser } from "@/lib/auth-session";
+import { readDocumentFileAsDataUrl } from "@/lib/document-upload";
 
 type DriverKycResponse = {
   kycStatus: "PENDING" | "APPROVED" | "REJECTED";
-  latestSubmission: { documentType: string | null; documentNumber: string | null; legalName: string | null; documentUrl: string; createdAt: string } | null;
-  submissions: Array<{ id: string; status: "PENDING" | "APPROVED" | "REJECTED"; documentType: string | null; documentNumber: string | null; documentUrl: string; createdAt: string }>;
+  latestSubmission: { status: "PENDING" | "APPROVED" | "REJECTED"; documentType: string | null; documentNumber: string | null; legalName: string | null; documentUrl: string; reviewerNotes: string | null; createdAt: string } | null;
+  submissions: Array<{ id: string; status: "PENDING" | "APPROVED" | "REJECTED"; documentType: string | null; documentNumber: string | null; documentUrl: string; reviewerNotes: string | null; createdAt: string }>;
   requiredDocuments: string[];
 };
 
 type PassengerKycResponse = {
   kycStatus: "PENDING" | "APPROVED" | "REJECTED";
-  latestSubmission: { documentType: string | null; documentNumber: string | null; legalName: string | null; documentUrl: string; selfieProvided: boolean; createdAt: string } | null;
-  submissions: Array<{ id: string; status: "PENDING" | "APPROVED" | "REJECTED"; documentType: string | null; documentNumber: string | null; documentUrl: string; createdAt: string }>;
+  latestSubmission: { status: "PENDING" | "APPROVED" | "REJECTED"; documentType: string | null; documentNumber: string | null; legalName: string | null; documentUrl: string; selfieProvided: boolean; selfieImageUrl: string | null; reviewerNotes: string | null; createdAt: string } | null;
+  submissions: Array<{ id: string; status: "PENDING" | "APPROVED" | "REJECTED"; documentType: string | null; documentNumber: string | null; documentUrl: string; selfieProvided: boolean; selfieImageUrl: string | null; reviewerNotes: string | null; createdAt: string }>;
   requiredDocuments: string[];
 };
 
@@ -49,6 +50,71 @@ function Field({
   );
 }
 
+function UploadField({
+  label,
+  helper,
+  fileName,
+  onSelect,
+  disabled
+}: {
+  label: string;
+  helper: string;
+  fileName: string | null;
+  onSelect: (file: File) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label className="block">
+      <div className="mb-2 text-sm font-bold uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="rounded-xl border border-dashed border-border bg-muted/30 p-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="text-sm font-semibold">{fileName ?? "No file selected yet"}</div>
+            <div className="mt-1 text-xs text-muted-foreground">{helper}</div>
+          </div>
+          <span className="inline-flex cursor-pointer items-center justify-center rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground">
+            Choose file
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf"
+              className="hidden"
+              disabled={disabled}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) {
+                  onSelect(file);
+                }
+                event.currentTarget.value = "";
+              }}
+            />
+          </span>
+        </div>
+      </div>
+    </label>
+  );
+}
+
+function KycReviewerFeedback({
+  status,
+  reviewerNotes
+}: {
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  reviewerNotes?: string | null;
+}) {
+  if (!reviewerNotes?.trim()) {
+    return null;
+  }
+
+  return (
+    <div className={`rounded-xl px-4 py-3 text-sm ${status === "REJECTED" ? "bg-destructive/10 text-destructive" : "bg-muted/60 text-muted-foreground"}`}>
+      <div className="mb-1 text-xs font-bold uppercase tracking-wider">
+        {status === "REJECTED" ? "What to fix" : "Reviewer note"}
+      </div>
+      <div>{reviewerNotes}</div>
+    </div>
+  );
+}
+
 function DriverKycContent({ user, compact }: { user: SessionUser; compact: boolean }) {
   const [payload, setPayload] = useState<DriverKycResponse | null>(null);
   const [step, setStep] = useState(1);
@@ -57,6 +123,7 @@ function DriverKycContent({ user, compact }: { user: SessionUser; compact: boole
   const [legalName, setLegalName] = useState(user.name);
   const [issuingCountry, setIssuingCountry] = useState("Ghana");
   const [documentUrl, setDocumentUrl] = useState("");
+  const [documentFileName, setDocumentFileName] = useState<string | null>(null);
   const [consent, setConsent] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -66,6 +133,17 @@ function DriverKycContent({ user, compact }: { user: SessionUser; compact: boole
   useEffect(() => {
     load().catch(() => setPayload(null));
   }, [user.id]);
+
+  const handleDocumentSelect = async (file: File) => {
+    try {
+      const dataUrl = await readDocumentFileAsDataUrl(file);
+      setDocumentUrl(dataUrl);
+      setDocumentFileName(file.name);
+      setMessage(null);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not read the selected document.");
+    }
+  };
 
   const submit = async () => {
     setSubmitting(true);
@@ -137,7 +215,13 @@ function DriverKycContent({ user, compact }: { user: SessionUser; compact: boole
             <Field label="Document Number" value={documentNumber} onChange={setDocumentNumber} placeholder="GHA-DL-XXXXXXXX" />
             <Field label="Legal Name" value={legalName} onChange={setLegalName} placeholder="Name on document" />
             <Field label="Issuing Country" value={issuingCountry} onChange={setIssuingCountry} placeholder="Ghana" />
-            <Field label="Document URL" value={documentUrl} onChange={setDocumentUrl} placeholder="https://..." />
+            <UploadField
+              label="Uploaded Document"
+              helper="Upload a PNG, JPG, WebP image, or PDF up to 5MB."
+              fileName={documentFileName}
+              onSelect={(file) => void handleDocumentSelect(file)}
+              disabled={submitting}
+            />
             <label className="flex items-start gap-3 rounded-xl bg-muted/30 p-4"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} className="mt-1 h-5 w-5 rounded" /><span className="text-sm text-muted-foreground">I confirm these documents belong to me and the information is accurate.</span></label>
             {message ? <div className="rounded-xl bg-muted/60 px-4 py-3 text-sm text-muted-foreground">{message}</div> : null}
             <div className="flex items-center justify-between">
@@ -151,10 +235,11 @@ function DriverKycContent({ user, compact }: { user: SessionUser; compact: boole
             <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-secondary/20"><CheckCircle2 className="h-10 w-10 text-secondary" /></div>
             <div className="mb-2 text-2xl font-extrabold">KYC review in progress</div>
             <div className="mb-6 text-sm text-muted-foreground">Latest submission: {payload?.latestSubmission?.documentType?.replaceAll("_", " ") ?? "No document submitted yet"}</div>
+            {payload?.latestSubmission ? <div className="mb-4"><KycReviewerFeedback status={payload.latestSubmission.status} reviewerNotes={payload.latestSubmission.reviewerNotes} /></div> : null}
             <div className="space-y-3">
               {(payload?.submissions ?? []).length ? payload!.submissions.map((submission) => (
-                <div key={submission.id} className="flex items-center justify-between rounded-xl border border-border p-4">
-                  <div>
+                <div key={submission.id} className="rounded-xl border border-border p-4">
+                  <div className="flex items-center justify-between gap-4">
                     <div className="font-bold">{submission.documentType?.replaceAll("_", " ") ?? "Document"}</div>
                     <div className="text-xs text-muted-foreground">{submission.documentNumber ?? "No number"} • {new Date(submission.createdAt).toLocaleString()}</div>
                   </div>
@@ -162,6 +247,7 @@ function DriverKycContent({ user, compact }: { user: SessionUser; compact: boole
                     <span className={`rounded-full px-3 py-1 text-xs font-bold uppercase ${statusTone(submission.status)}`}>{submission.status}</span>
                     <a href={submission.documentUrl} target="_blank" rel="noreferrer" className="mt-2 block text-xs font-bold text-primary">Open document</a>
                   </div>
+                  {submission.reviewerNotes ? <div className="mt-3"><KycReviewerFeedback status={submission.status} reviewerNotes={submission.reviewerNotes} /></div> : null}
                 </div>
               )) : <div className="rounded-xl border border-dashed border-border p-6 text-sm text-muted-foreground">No KYC submissions yet.</div>}
             </div>
@@ -179,12 +265,16 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
   const [documentNumber, setDocumentNumber] = useState("");
   const [legalName, setLegalName] = useState(user.name);
   const [documentUrl, setDocumentUrl] = useState("");
+  const [documentFileName, setDocumentFileName] = useState<string | null>(null);
   const [selfieProvided, setSelfieProvided] = useState(false);
+  const [selfieImageUrl, setSelfieImageUrl] = useState("");
   const [capturing, setCapturing] = useState(false);
-  const [countdown, setCountdown] = useState(3);
   const [consent, setConsent] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   const load = async () => setPayload(await fetchJson<PassengerKycResponse>(`/passenger/kyc/${user.id}`));
 
@@ -192,20 +282,91 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
     load().catch(() => setPayload(null));
   }, [user.id]);
 
-  const startCapture = () => {
-    setCapturing(true);
-    setCountdown(3);
-    const timer = window.setInterval(() => {
-      setCountdown((previous) => {
-        if (previous <= 1) {
-          window.clearInterval(timer);
-          setCapturing(false);
-          setSelfieProvided(true);
-          return 0;
-        }
-        return previous - 1;
+  useEffect(() => () => {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+  }, []);
+
+  const stopCapture = () => {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    setCapturing(false);
+  };
+
+  const handleDocumentSelect = async (file: File) => {
+    try {
+      const dataUrl = await readDocumentFileAsDataUrl(file);
+      setDocumentUrl(dataUrl);
+      setDocumentFileName(file.name);
+      setMessage(null);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not read the selected document.");
+    }
+  };
+
+  const startCapture = async () => {
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error("Camera access is not supported on this device.");
+      }
+
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: "user",
+          width: { ideal: 720 },
+          height: { ideal: 720 }
+        },
+        audio: false
       });
-    }, 1000);
+
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+
+      setCapturing(true);
+      setSelfieProvided(false);
+      setSelfieImageUrl("");
+      setMessage(null);
+    } catch (error) {
+      setCapturing(false);
+      setMessage(error instanceof Error ? error.message : "We could not access your camera.");
+    }
+  };
+
+  const captureSelfie = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+
+    if (!video || !canvas) {
+      setMessage("Camera is not ready yet. Please try again.");
+      return;
+    }
+
+    const width = video.videoWidth || 720;
+    const height = video.videoHeight || 720;
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+
+    if (!context) {
+      setMessage("We could not capture your selfie. Please try again.");
+      return;
+    }
+
+    context.drawImage(video, 0, 0, width, height);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+    setSelfieImageUrl(dataUrl);
+    setSelfieProvided(true);
+    stopCapture();
+  };
+
+  const retakeSelfie = () => {
+    setSelfieProvided(false);
+    setSelfieImageUrl("");
+    void startCapture();
   };
 
   const submit = async () => {
@@ -214,7 +375,7 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
     try {
       await fetchJson(`/passenger/kyc/${user.id}`, {
         method: "POST",
-        body: JSON.stringify({ documentType, documentNumber, legalName, documentUrl, selfieProvided })
+        body: JSON.stringify({ documentType, documentNumber, legalName, documentUrl, selfieProvided, selfieImageUrl })
       });
       await load();
       setStep(4);
@@ -274,14 +435,54 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
         ) : null}
         {step === 3 ? (
           <div className="text-center">
-            <div className="mx-auto mb-6 flex h-48 w-48 items-center justify-center rounded-full border-4 border-muted">
-              {selfieProvided ? <CheckCircle2 className="h-16 w-16 text-secondary" /> : <Camera className={`h-12 w-12 ${capturing ? "animate-pulse text-primary" : "text-muted-foreground"}`} />}
-              {capturing ? <div className="absolute text-5xl font-extrabold text-primary">{countdown}</div> : null}
+            <div className="relative mx-auto mb-6 h-56 w-56 overflow-hidden rounded-full border-4 border-muted bg-muted/30">
+              {capturing ? (
+                <video ref={videoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+              ) : selfieImageUrl ? (
+                <img src={selfieImageUrl} alt="Captured selfie preview" className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center">
+                  <Camera className="h-12 w-12 text-muted-foreground" />
+                </div>
+              )}
             </div>
-            <div className="mb-6 text-lg font-medium">{selfieProvided ? "Selfie captured successfully!" : capturing ? "Hold still..." : "Align your face within the circle"}</div>
+            <canvas ref={canvasRef} className="hidden" />
+            <div className="mb-2 text-lg font-medium">
+              {selfieProvided ? "Selfie captured successfully!" : capturing ? "Align your face within the circle and capture your selfie." : "We need a live selfie to verify this account."}
+            </div>
+            <div className="mb-6 text-sm text-muted-foreground">
+              Use the front camera in a well-lit area so your face is clearly visible.
+            </div>
+            {message ? <div className="mb-6 rounded-xl bg-muted/60 px-4 py-3 text-sm text-muted-foreground">{message}</div> : null}
             <div className="flex items-center justify-between">
-              <button type="button" className="flex items-center text-muted-foreground" onClick={() => setStep(2)}><ChevronLeft className="mr-2 h-4 w-4" /> Back</button>
-              {!selfieProvided ? <button type="button" className="rounded-xl bg-primary px-8 py-3 font-bold text-primary-foreground" onClick={startCapture}>{capturing ? "Capturing..." : "Enable Camera"}</button> : <button type="button" className="rounded-xl bg-primary px-8 py-3 font-bold text-primary-foreground" onClick={() => setStep(4)}>Looks Good</button>}
+              <button
+                type="button"
+                className="flex items-center text-muted-foreground"
+                onClick={() => {
+                  stopCapture();
+                  setStep(2);
+                }}
+              ><ChevronLeft className="mr-2 h-4 w-4" /> Back</button>
+              {!capturing && !selfieProvided ? (
+                <button type="button" className="rounded-xl bg-primary px-8 py-3 font-bold text-primary-foreground" onClick={() => void startCapture()}>
+                  Enable Camera
+                </button>
+              ) : null}
+              {capturing ? (
+                <button type="button" className="rounded-xl bg-primary px-8 py-3 font-bold text-primary-foreground" onClick={captureSelfie}>
+                  Capture Selfie
+                </button>
+              ) : null}
+              {selfieProvided ? (
+                <div className="flex gap-3">
+                  <button type="button" className="rounded-xl border border-border px-6 py-3 font-bold text-foreground" onClick={retakeSelfie}>
+                    Retake
+                  </button>
+                  <button type="button" className="rounded-xl bg-primary px-8 py-3 font-bold text-primary-foreground" onClick={() => setStep(4)}>
+                    Looks Good
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
         ) : null}
@@ -289,13 +490,21 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
           <div>
             <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-secondary/20"><CheckCircle2 className="h-10 w-10 text-secondary" /></div>
             <div className="mb-4 text-2xl font-extrabold">Review Submission</div>
+            {payload?.latestSubmission ? <div className="mb-4"><KycReviewerFeedback status={payload.latestSubmission.status} reviewerNotes={payload.latestSubmission.reviewerNotes} /></div> : null}
             <div className="mb-6 grid gap-4 md:grid-cols-2">
               <Field label="Full Name" value={legalName} onChange={setLegalName} placeholder="Full name" />
               <Field label="Document Number" value={documentNumber} onChange={setDocumentNumber} placeholder="GHA-XXXXXXXXX-X" />
-              <Field label="Document URL" value={documentUrl} onChange={setDocumentUrl} placeholder="https://..." />
+              <UploadField
+                label="Uploaded Document"
+                helper="Upload a PNG, JPG, WebP image, or PDF up to 5MB."
+                fileName={documentFileName}
+                onSelect={(file) => void handleDocumentSelect(file)}
+                disabled={submitting}
+              />
               <div className="rounded-xl bg-muted/30 p-4">
                 <div className="mb-2 text-sm font-bold uppercase tracking-wider text-muted-foreground">Selfie Check</div>
                 <div className="text-sm font-medium">{selfieProvided ? "Completed" : "Missing"}</div>
+                {selfieImageUrl ? <img src={selfieImageUrl} alt="Selfie review preview" className="mt-3 h-20 w-20 rounded-2xl object-cover" /> : null}
               </div>
             </div>
             <label className="mb-6 flex items-start gap-3 rounded-xl bg-muted/30 p-4"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} className="mt-1 h-5 w-5 rounded" /><span className="text-sm text-muted-foreground">I confirm these documents belong to me and the information is accurate.</span></label>

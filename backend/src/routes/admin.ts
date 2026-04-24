@@ -22,6 +22,24 @@ function getParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
 
+function mergeKycReviewNotes(existingNotes: string | null, reviewerNotes?: string) {
+  const trimmedReviewerNotes = reviewerNotes?.trim() || null;
+
+  if (!existingNotes) {
+    return trimmedReviewerNotes;
+  }
+
+  try {
+    const parsed = JSON.parse(existingNotes) as Record<string, unknown>;
+    return JSON.stringify({
+      ...parsed,
+      notes: trimmedReviewerNotes
+    });
+  } catch {
+    return trimmedReviewerNotes ?? existingNotes;
+  }
+}
+
 adminRouter.get("/summary", async (_request: AuthenticatedRequest, response) => {
   const [users, rides, payouts, incidents, kycs, driversOnline] = await Promise.all([
     prisma.user.groupBy({
@@ -152,18 +170,32 @@ adminRouter.post("/kyc/:submissionId/review", async (request: AuthenticatedReque
     return;
   }
 
+  const existingSubmission = await prisma.kycSubmission.findUnique({
+    where: { id: submissionId },
+    select: {
+      id: true,
+      userId: true,
+      notes: true
+    }
+  });
+
+  if (!existingSubmission) {
+    response.status(404).json({ message: "KYC submission not found" });
+    return;
+  }
+
   const submission = await prisma.kycSubmission.update({
     where: { id: submissionId },
     data: {
       status: body.status,
-      notes: body.notes?.trim(),
+      notes: mergeKycReviewNotes(existingSubmission.notes, body.notes),
       reviewedAt: new Date(),
       reviewedBy: request.auth!.userId
     }
   });
 
   await prisma.user.update({
-    where: { id: submission.userId },
+    where: { id: existingSubmission.userId },
     data: {
       kycStatus: body.status
     }

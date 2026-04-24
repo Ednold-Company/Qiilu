@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { fetchJson } from "@/lib/api";
 import { clearSession, type SessionUser } from "@/lib/auth-session";
+import { readDocumentFileAsDataUrl } from "@/lib/document-upload";
 import { shouldUpdateLiveCoords } from "@/lib/map-motion";
 import { readImageFileAsDataUrl } from "@/lib/profile-image";
 import { useTheme } from "@/lib/theme";
@@ -1081,6 +1082,7 @@ export function DriverAccountDesktopPage({ user }: { user: SessionUser }) {
   const [legalName, setLegalName] = useState(user.name);
   const [issuingCountry, setIssuingCountry] = useState("Ghana");
   const [documentUrl, setDocumentUrl] = useState("");
+  const [documentFileName, setDocumentFileName] = useState<string | null>(null);
   const [kycMessage, setKycMessage] = useState<string | null>(null);
   const [submittingKyc, setSubmittingKyc] = useState(false);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
@@ -1155,6 +1157,18 @@ export function DriverAccountDesktopPage({ user }: { user: SessionUser }) {
       setKycMessage(error instanceof Error ? error.message : "Could not submit KYC.");
     } finally {
       setSubmittingKyc(false);
+    }
+  };
+
+  const uploadKycDocument = async (file: File) => {
+    setKycMessage(null);
+
+    try {
+      const value = await readDocumentFileAsDataUrl(file);
+      setDocumentUrl(value);
+      setDocumentFileName(file.name);
+    } catch (error) {
+      setKycMessage(error instanceof Error ? error.message : "Could not read the selected document.");
     }
   };
 
@@ -1288,7 +1302,29 @@ export function DriverAccountDesktopPage({ user }: { user: SessionUser }) {
                   <FieldInput label="Legal Name" value={legalName} onChange={setLegalName} placeholder="Name on document" />
                   <FieldInput label="Issuing Country" value={issuingCountry} onChange={setIssuingCountry} placeholder="Ghana" />
                 </div>
-                <FieldInput label="Document URL" value={documentUrl} onChange={setDocumentUrl} placeholder="https://..." />
+                <label className="space-y-2 md:col-span-2">
+                  <span className="text-sm font-bold text-muted-foreground">Uploaded Document</span>
+                  <div className="rounded-xl border border-dashed border-border bg-muted/30 p-4">
+                    <div className="text-sm font-semibold">{documentFileName ?? "No file selected yet"}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">Upload a PNG, JPG, WebP image, or PDF up to 5MB.</div>
+                    <label className="mt-3 inline-flex cursor-pointer rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground">
+                      Choose file
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf"
+                        className="hidden"
+                        disabled={submittingKyc}
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file) {
+                            void uploadKycDocument(file);
+                          }
+                          event.currentTarget.value = "";
+                        }}
+                      />
+                    </label>
+                  </div>
+                </label>
                 {kycMessage ? <div className="rounded-xl bg-muted/60 px-4 py-3 text-sm text-muted-foreground">{kycMessage}</div> : null}
                 <div className="flex justify-end">
                   <button
