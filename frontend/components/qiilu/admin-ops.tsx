@@ -257,12 +257,27 @@ export function AdminShell({
             </div>
           </header>
 
+          <nav className="-mt-2 mb-6 xl:hidden">
+            <div className="flex gap-2 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {navItems.map(({ href, label, icon: Icon }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className="inline-flex shrink-0 items-center gap-2 rounded-full border border-border/80 bg-card/95 px-4 py-2 text-sm font-semibold text-muted-foreground shadow-sm backdrop-blur transition hover:border-primary/30 hover:text-foreground"
+                >
+                  <Icon className="h-4 w-4" />
+                  {label}
+                </Link>
+              ))}
+            </div>
+          </nav>
+
           <section className="mb-6 rounded-[2rem] border border-border/80 bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.16),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(34,197,94,0.15),transparent_24%),linear-gradient(135deg,#fff7ee_0%,#f8f8fb_52%,#eff5ff_100%)] p-6 shadow-sm dark:bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.14),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(34,197,94,0.12),transparent_20%),linear-gradient(135deg,#12171d_0%,#171c22_52%,#11161d_100%)]">
             <div className="inline-flex items-center gap-2 rounded-full border border-secondary/25 bg-secondary/10 px-3 py-1 text-sm font-semibold text-secondary">
               <RefreshCw className="h-4 w-4" />
               Dedicated operations view
             </div>
-            <h1 className="mt-4 max-w-3xl text-4xl font-extrabold tracking-tight md:text-5xl">{title}</h1>
+            <h1 className="mt-4 max-w-3xl text-3xl font-extrabold tracking-tight md:text-5xl">{title}</h1>
             <p className="mt-3 max-w-2xl text-base leading-7 text-muted-foreground">{subtitle}</p>
             {metrics?.length ? (
               <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">

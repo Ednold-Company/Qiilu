@@ -550,6 +550,21 @@ export default function AdminPage() {
             </div>
           </header>
 
+          <nav className="-mt-2 mb-6 xl:hidden">
+            <div className="flex gap-2 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {navItems.map(({ href, label, icon: Icon }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className="inline-flex shrink-0 items-center gap-2 rounded-full border border-border/80 bg-card/95 px-4 py-2 text-sm font-semibold text-muted-foreground shadow-sm backdrop-blur transition hover:border-primary/30 hover:text-foreground"
+                >
+                  <Icon className="h-4 w-4" />
+                  {label}
+                </Link>
+              ))}
+            </div>
+          </nav>
+
           <section
             id="overview"
             className="relative mb-6 overflow-hidden rounded-[2rem] border border-border/80 bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.16),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(34,197,94,0.15),transparent_24%),linear-gradient(135deg,#fff7ee_0%,#f8f8fb_52%,#eff5ff_100%)] p-6 shadow-sm dark:bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.14),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(34,197,94,0.12),transparent_20%),linear-gradient(135deg,#12171d_0%,#171c22_52%,#11161d_100%)]"
@@ -560,7 +575,7 @@ export default function AdminPage() {
                   <Activity className="h-4 w-4" />
                   Realtime operational feed
                 </div>
-                <h1 className="max-w-3xl text-4xl font-extrabold tracking-tight md:text-5xl">
+                <h1 className="max-w-3xl text-3xl font-extrabold tracking-tight md:text-5xl">
                   Keep rides moving, drivers protected, and payouts flowing.
                 </h1>
                 <p className="mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
