@@ -20,7 +20,7 @@ import { fetchJson } from "@/lib/api";
 import { setSession } from "@/lib/auth-session";
 import { useTheme } from "@/lib/theme";
 
-type LoginRole = "PASSENGER" | "DRIVER";
+type LoginRole = "PASSENGER" | "DRIVER" | "ADMIN";
 type SessionResponse = {
   token: string;
   user: { id: string; name: string; phone: string; role: "ADMIN" | "PASSENGER" | "DRIVER" };
@@ -51,7 +51,13 @@ export default function LoginPage() {
       });
 
       setSession(session);
-      router.push(session.user.role === "DRIVER" ? "/driver" : "/passenger");
+      router.push(
+        session.user.role === "ADMIN"
+          ? "/admin"
+          : session.user.role === "DRIVER"
+            ? "/driver"
+            : "/passenger"
+      );
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Login failed.");
     } finally {
@@ -204,6 +210,17 @@ export default function LoginPage() {
                 >
                   Driver Partner
                 </button>
+                <button
+                  onClick={() => setActiveRole("ADMIN")}
+                  className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition-all duration-200 ${
+                    activeRole === "ADMIN"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  type="button"
+                >
+                  Admin
+                </button>
               </div>
 
               <AuthField label="Phone Number">
@@ -260,7 +277,7 @@ export default function LoginPage() {
                   <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
                 ) : (
                   <>
-                    Sign In <ChevronRight className="h-4 w-4" />
+                    {activeRole === "ADMIN" ? "Sign In to Admin" : "Sign In"} <ChevronRight className="h-4 w-4" />
                   </>
                 )}
               </button>
@@ -346,6 +363,15 @@ export default function LoginPage() {
             >
               Driver
             </button>
+            <button
+              onClick={() => setActiveRole("ADMIN")}
+              className={`flex-1 rounded-lg py-2 text-sm font-semibold transition-all duration-200 ${
+                activeRole === "ADMIN" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
+              }`}
+              type="button"
+            >
+              Admin
+            </button>
           </div>
 
           <AuthField label="Phone Number">
@@ -401,7 +427,7 @@ export default function LoginPage() {
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
             ) : (
               <>
-                Sign In <ChevronRight className="h-4 w-4" />
+                {activeRole === "ADMIN" ? "Sign In to Admin" : "Sign In"} <ChevronRight className="h-4 w-4" />
               </>
             )}
           </button>
