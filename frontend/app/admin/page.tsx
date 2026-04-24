@@ -15,8 +15,10 @@ import {
   FileCheck2,
   LayoutDashboard,
   MapPinned,
+  RefreshCw,
   ShieldCheck,
   Siren,
+  TrendingUp,
   UserRoundCheck,
   Users,
   Wallet
@@ -89,6 +91,15 @@ type Incident = {
   reporter: { name: string; phone: string; role: string };
 };
 
+type SnapshotHistory = {
+  at: string;
+  driversOnline: number;
+  liveRides: number;
+  pendingKyc: number;
+  pendingPayouts: number;
+  openIncidents: number;
+};
+
 const emptySummary: AdminSummary = {
   users: [],
   rides: [],
@@ -97,6 +108,10 @@ const emptySummary: AdminSummary = {
   kycs: [],
   driversOnline: 0
 };
+
+function getBucketCount(items: SummaryBucket[], key: string) {
+  return items.find((item) => item.role === key || item.status === key)?._count._all ?? 0;
+}
 
 function parseKycNotes(notes: string | null) {
   if (!notes) {
@@ -216,6 +231,60 @@ function MetricsTimeline({
   );
 }
 
+function StatusPill({
+  label,
+  tone
+}: {
+  label: string;
+  tone: "neutral" | "success" | "warning" | "danger" | "info";
+}) {
+  const tones = {
+    neutral: "bg-muted text-muted-foreground",
+    success: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+    warning: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
+    danger: "bg-rose-500/10 text-rose-700 dark:text-rose-300",
+    info: "bg-blue-500/10 text-blue-700 dark:text-blue-300"
+  } as const;
+
+  return (
+    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${tones[tone]}`}>
+      {label}
+    </span>
+  );
+}
+
+function TinyTrendChart({
+  title,
+  value,
+  tone,
+  points
+}: {
+  title: string;
+  value: string;
+  tone: string;
+  points: number[];
+}) {
+  const maxValue = Math.max(...points, 1);
+
+  return (
+    <div className="rounded-[1.5rem] border border-border/80 bg-card/95 p-4 shadow-sm">
+      <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{title}</div>
+      <div className="mt-2 text-2xl font-extrabold tracking-tight">{value}</div>
+      <div className="mt-4 flex h-24 items-end gap-2">
+        {points.map((point, index) => (
+          <div key={`${title}-${index}`} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-2">
+            <div
+              className={`w-full rounded-t-full ${tone}`}
+              style={{ height: `${Math.max((point / maxValue) * 100, point ? 10 : 4)}%` }}
+            />
+            <div className="text-[10px] text-muted-foreground">{index + 1}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const router = useRouter();
   const [user, setUser] = useState<SessionUser | null>(null);
@@ -228,15 +297,17 @@ export default function AdminPage() {
   const [kycReviewNotes, setKycReviewNotes] = useState<Record<string, string>>({});
   const [payouts, setPayouts] = useState<PayoutRequest[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [history, setHistory] = useState<SnapshotHistory[]>([]);
   const [message, setMessage] = useState("Connecting to Qiilu control room...");
 
   const loadAdminData = useCallback(async () => {
-    const [summaryPayload, dispatchPayload, kycPayload, payoutPayload, incidentPayload] = await Promise.all([
+    const [summaryPayload, dispatchPayload, kycPayload, payoutPayload, incidentPayload, metricsHistoryPayload] = await Promise.all([
       fetchJson<AdminSummary>("/admin/summary"),
       fetchJson<{ liveRides: DispatchRide[]; drivers: DispatchDriver[] }>("/admin/dispatch"),
       fetchJson<{ submissions: KycSubmission[] }>("/admin/kyc"),
       fetchJson<{ payouts: PayoutRequest[] }>("/admin/payouts"),
-      fetchJson<{ incidents: Incident[] }>("/admin/incidents")
+      fetchJson<{ incidents: Incident[] }>("/admin/incidents"),
+      fetchJson<{ snapshots: SnapshotHistory[] }>("/admin/metrics-history?limit=24")
     ]);
 
     setSummary(summaryPayload);
@@ -244,6 +315,7 @@ export default function AdminPage() {
     setKyc(kycPayload.submissions);
     setPayouts(payoutPayload.payouts);
     setIncidents(incidentPayload.incidents);
+    setHistory(metricsHistoryPayload.snapshots);
     setMessage("Live operational data synced");
   }, []);
 
@@ -313,27 +385,37 @@ export default function AdminPage() {
     setMessage(`Incident moved to ${status.toLowerCase()}.`);
   };
 
-  const getCount = (items: SummaryBucket[], key: string) =>
-    items.find((item) => item.role === key || item.status === key)?._count._all ?? 0;
-
-  const passengerCount = getCount(summary.users, "PASSENGER");
-  const driverCount = getCount(summary.users, "DRIVER");
-  const searchingRides = getCount(summary.rides, "SEARCHING");
-  const inProgressRides = getCount(summary.rides, "IN_PROGRESS");
-  const pendingPayouts = getCount(summary.payouts, "PENDING");
-  const openIncidents = getCount(summary.incidents, "OPEN");
-  const pendingKyc = getCount(summary.kycs, "PENDING");
-  const approvedKyc = getCount(summary.kycs, "APPROVED");
-  const rejectedKyc = getCount(summary.kycs, "REJECTED");
+  const passengerCount = getBucketCount(summary.users, "PASSENGER");
+  const driverCount = getBucketCount(summary.users, "DRIVER");
+  const searchingRides = getBucketCount(summary.rides, "SEARCHING");
+  const inProgressRides = getBucketCount(summary.rides, "IN_PROGRESS");
+  const pendingPayouts = getBucketCount(summary.payouts, "PENDING");
+  const openIncidents = getBucketCount(summary.incidents, "OPEN");
+  const pendingKyc = getBucketCount(summary.kycs, "PENDING");
+  const approvedKyc = getBucketCount(summary.kycs, "APPROVED");
+  const rejectedKyc = getBucketCount(summary.kycs, "REJECTED");
   const totalUsers = passengerCount + driverCount;
   const liveDrivers = dispatch.drivers.filter((driver) => driver.availability === "AVAILABLE").length;
+  const currentSnapshot: SnapshotHistory = {
+    at: new Date().toISOString(),
+    driversOnline: summary.driversOnline,
+    liveRides: dispatch.liveRides.length,
+    pendingKyc,
+    pendingPayouts,
+    openIncidents
+  };
+  const chartHistory = history.length
+    ? [...history.slice(-23), currentSnapshot]
+    : [currentSnapshot];
 
   const navItems = [
-    { href: "#overview", label: "Overview", icon: LayoutDashboard },
-    { href: "#dispatch", label: "Dispatch", icon: MapPinned },
-    { href: "#kyc", label: "KYC", icon: FileCheck2 },
-    { href: "#payouts", label: "Payouts", icon: Wallet },
-    { href: "#safety", label: "Safety", icon: Siren }
+    { href: "/admin", label: "Overview", icon: LayoutDashboard },
+    { href: "/admin/dispatch", label: "Dispatch", icon: MapPinned },
+    { href: "/admin/kyc", label: "KYC", icon: FileCheck2 },
+    { href: "/admin/finance", label: "Finance", icon: BadgeDollarSign },
+    { href: "/admin/payouts", label: "Payouts", icon: Wallet },
+    { href: "#trends", label: "Trends", icon: TrendingUp },
+    { href: "/admin/safety", label: "Safety", icon: Siren }
   ];
 
   const operationsBars = [
@@ -361,6 +443,29 @@ export default function AdminPage() {
     }
   ];
 
+  const liveFeedItems = [
+    {
+      label: "Dashboard sync",
+      value: history.length ? new Date(chartHistory[chartHistory.length - 1].at).toLocaleTimeString() : "Awaiting refresh",
+      tone: "info" as const
+    },
+    {
+      label: "KYC backlog",
+      value: `${pendingKyc} waiting`,
+      tone: pendingKyc ? ("warning" as const) : ("success" as const)
+    },
+    {
+      label: "Payout queue",
+      value: `${pendingPayouts} pending`,
+      tone: pendingPayouts ? ("warning" as const) : ("success" as const)
+    },
+    {
+      label: "Safety watch",
+      value: `${openIncidents} open`,
+      tone: openIncidents ? ("danger" as const) : ("success" as const)
+    }
+  ];
+
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(241,245,249,0.92))] text-foreground dark:bg-[linear-gradient(180deg,#0d1117,#11161c)]">
       <div className="mx-auto flex min-h-screen max-w-[1600px] gap-6 px-4 py-5 sm:px-6 xl:px-8">
@@ -380,7 +485,7 @@ export default function AdminPage() {
 
             <div className="space-y-2 px-4 py-5">
               {navItems.map(({ href, label, icon: Icon }) => (
-                <a
+                <Link
                   key={href}
                   href={href}
                   className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold text-muted-foreground transition hover:bg-primary/8 hover:text-foreground"
@@ -389,7 +494,7 @@ export default function AdminPage() {
                     <Icon className="h-4 w-4" />
                   </span>
                   {label}
-                </a>
+                </Link>
               ))}
             </div>
 
@@ -601,6 +706,39 @@ export default function AdminPage() {
             </article>
           </section>
 
+          <section id="trends" className="mb-6 rounded-[1.8rem] border border-border/80 bg-card/95 p-5 shadow-sm">
+            <PanelHeader
+              title="Live trend window"
+              meta="These charts build from real admin refreshes during the current session, so the ops team can spot direction, not just totals."
+            />
+            <div className="grid gap-4 xl:grid-cols-4">
+              <TinyTrendChart
+                title="Drivers online"
+                value={`${chartHistory[chartHistory.length - 1]?.driversOnline ?? 0}`}
+                tone="bg-emerald-500"
+                points={chartHistory.map((point) => point.driversOnline)}
+              />
+              <TinyTrendChart
+                title="Live rides"
+                value={`${chartHistory[chartHistory.length - 1]?.liveRides ?? 0}`}
+                tone="bg-orange-500"
+                points={chartHistory.map((point) => point.liveRides)}
+              />
+              <TinyTrendChart
+                title="Pending KYC"
+                value={`${chartHistory[chartHistory.length - 1]?.pendingKyc ?? 0}`}
+                tone="bg-blue-500"
+                points={chartHistory.map((point) => point.pendingKyc)}
+              />
+              <TinyTrendChart
+                title="Open incidents"
+                value={`${chartHistory[chartHistory.length - 1]?.openIncidents ?? 0}`}
+                tone="bg-rose-500"
+                points={chartHistory.map((point) => point.openIncidents)}
+              />
+            </div>
+          </section>
+
           <section className="grid flex-1 gap-6 xl:grid-cols-[1.25fr_0.95fr]">
             <div className="grid gap-6">
               <article id="dispatch" className="rounded-[1.8rem] border border-border/80 bg-card/95 p-5 shadow-sm">
@@ -613,9 +751,18 @@ export default function AdminPage() {
                           <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
                             {ride.requestSource}
                           </span>
-                          <span className="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
-                            {ride.status.replaceAll("_", " ")}
-                          </span>
+                          <StatusPill
+                            label={ride.status.replaceAll("_", " ")}
+                            tone={
+                              ride.status === "IN_PROGRESS"
+                                ? "success"
+                                : ride.status === "SEARCHING"
+                                  ? "warning"
+                                  : ride.status === "CANCELLED"
+                                    ? "danger"
+                                    : "info"
+                            }
+                          />
                         </div>
                         <strong className="text-lg">GHS {ride.estimatedFareGhs.toFixed(2)}</strong>
                       </div>
@@ -655,9 +802,16 @@ export default function AdminPage() {
                                   <div className="text-sm text-muted-foreground">{submission.user.phone} | {submission.user.role}</div>
                                 </div>
                               </div>
-                              <span className="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
-                                {submission.status}
-                              </span>
+                              <StatusPill
+                                label={submission.status}
+                                tone={
+                                  submission.status === "APPROVED"
+                                    ? "success"
+                                    : submission.status === "REJECTED"
+                                      ? "danger"
+                                      : "warning"
+                                }
+                              />
                             </div>
                             <div className="mb-4 grid gap-2 text-sm text-muted-foreground md:grid-cols-2">
                               <div>Document: {details?.documentType ?? "Not specified"}</div>
@@ -772,6 +926,50 @@ export default function AdminPage() {
             </div>
 
             <div className="grid gap-6">
+              <div className="xl:sticky xl:top-5 xl:z-10">
+                <article className="rounded-[1.8rem] border border-border/80 bg-card/95 p-5 shadow-sm">
+                  <PanelHeader title="Ops activity rail" meta="Keep the most urgent queues and live motion in view while you work" />
+                  <div className="space-y-4">
+                    <div className="rounded-[1.4rem] border border-border/80 bg-[linear-gradient(135deg,rgba(249,115,22,0.08),rgba(14,165,233,0.08))] p-4">
+                      <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                        <RefreshCw className="h-4 w-4 text-primary" />
+                        Sync health
+                      </div>
+                      <div className="text-2xl font-extrabold tracking-tight">{message}</div>
+                      <div className="mt-2 text-sm text-muted-foreground">
+                        Refresh cadence is every 15 seconds while this admin console stays open.
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      {liveFeedItems.map((item) => (
+                        <div key={item.label} className="flex items-center justify-between gap-3 rounded-2xl border border-border/80 bg-muted/30 px-4 py-3">
+                          <div>
+                            <div className="text-sm font-semibold">{item.label}</div>
+                            <div className="text-xs text-muted-foreground">Live operational signal</div>
+                          </div>
+                          <StatusPill label={item.value} tone={item.tone} />
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="rounded-[1.4rem] border border-border/80 bg-muted/30 p-4">
+                      <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
+                        <TrendingUp className="h-4 w-4 text-primary" />
+                        Queue heat
+                      </div>
+                      <MiniBarChart
+                        items={[
+                          { label: "KYC queue", value: pendingKyc, tone: "bg-blue-500" },
+                          { label: "Payout queue", value: pendingPayouts, tone: "bg-lime-500" },
+                          { label: "Safety queue", value: openIncidents, tone: "bg-rose-500" }
+                        ]}
+                      />
+                    </div>
+                  </div>
+                </article>
+              </div>
+
               <article id="payouts" className="rounded-[1.8rem] border border-border/80 bg-card/95 p-5 shadow-sm">
                 <PanelHeader title="Payout queue" meta="Approve and track MoMo payout requests from drivers" />
                 <div className="grid gap-3">
@@ -782,9 +980,18 @@ export default function AdminPage() {
                           <div className="font-bold">{payout.wallet.user.name}</div>
                           <div className="text-sm text-muted-foreground">{payout.provider} | {payout.accountRef}</div>
                         </div>
-                        <span className="rounded-full bg-lime-500/10 px-3 py-1 text-xs font-semibold text-lime-700 dark:text-lime-300">
-                          {payout.status}
-                        </span>
+                        <StatusPill
+                          label={payout.status}
+                          tone={
+                            payout.status === "PAID"
+                              ? "success"
+                              : payout.status === "REJECTED"
+                                ? "danger"
+                                : payout.status === "PROCESSING"
+                                  ? "info"
+                                  : "warning"
+                          }
+                        />
                       </div>
                       <div className="mb-4 flex items-center justify-between">
                         <div className="text-sm text-muted-foreground">Requested amount</div>
@@ -816,9 +1023,10 @@ export default function AdminPage() {
                           <div className="font-bold">{driver.name}</div>
                           <div className="text-sm text-muted-foreground">{driver.phone}</div>
                         </div>
-                        <span className="rounded-full bg-secondary/10 px-3 py-1 text-xs font-semibold text-secondary">
-                          {driver.availability.replaceAll("_", " ").toLowerCase()}
-                        </span>
+                        <StatusPill
+                          label={driver.availability.replaceAll("_", " ").toLowerCase()}
+                          tone={driver.availability === "AVAILABLE" ? "success" : driver.availability === "BUSY" ? "warning" : "neutral"}
+                        />
                       </div>
                       <div className="mt-3 grid gap-1 text-sm text-muted-foreground">
                         <span>KYC: {driver.kycStatus ?? "pending review"}</span>
@@ -844,9 +1052,16 @@ export default function AdminPage() {
                             <div className="text-sm text-muted-foreground">{incident.reporter.name} | {incident.reporter.role.toLowerCase()}</div>
                           </div>
                         </div>
-                        <span className="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
-                          {incident.severity}
-                        </span>
+                        <StatusPill
+                          label={incident.severity}
+                          tone={
+                            incident.severity === "CRITICAL"
+                              ? "danger"
+                              : incident.severity === "HIGH"
+                                ? "warning"
+                                : "neutral"
+                          }
+                        />
                       </div>
                       <p className="mb-4 text-sm text-muted-foreground">{incident.description}</p>
                       <div className="flex flex-wrap gap-2">

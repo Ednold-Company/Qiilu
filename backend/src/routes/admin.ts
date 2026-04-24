@@ -5,6 +5,7 @@ import {
   PayoutStatus,
   RideStatus
 } from "@prisma/client";
+import { getAdminMetricsHistory } from "../lib/admin-metrics.js";
 import { logAdminAction } from "../lib/audit-log.js";
 import { prisma } from "../lib/prisma.js";
 import { markPayoutPaid } from "../lib/payments.js";
@@ -79,6 +80,27 @@ adminRouter.get("/summary", async (_request: AuthenticatedRequest, response) => 
     incidents,
     kycs,
     driversOnline
+  });
+});
+
+adminRouter.get("/metrics-history", async (request: AuthenticatedRequest, response) => {
+  const rawLimit = request.query.limit;
+  const limitText = Array.isArray(rawLimit)
+    ? (typeof rawLimit[0] === "string" ? rawLimit[0] : undefined)
+    : (typeof rawLimit === "string" ? rawLimit : undefined);
+  const limitValue = Number.parseInt(limitText ?? "", 10);
+  const limit = Number.isFinite(limitValue) ? limitValue : 24;
+  const snapshots = await getAdminMetricsHistory(limit);
+
+  response.json({
+    snapshots: snapshots.map((snapshot) => ({
+      at: snapshot.createdAt.toISOString(),
+      driversOnline: snapshot.driversOnline,
+      liveRides: snapshot.liveRides,
+      pendingKyc: snapshot.pendingKyc,
+      pendingPayouts: snapshot.pendingPayouts,
+      openIncidents: snapshot.openIncidents
+    }))
   });
 });
 
