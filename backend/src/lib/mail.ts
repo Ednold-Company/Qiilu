@@ -128,8 +128,19 @@ async function createGmailOauthTransport() {
     throw new Error("Could not obtain Gmail OAuth access token");
   }
 
+  const oauthHost = process.env.GMAIL_OAUTH_HOST?.trim() || "smtp.gmail.com";
+  const oauthPort = Number(process.env.GMAIL_OAUTH_PORT ?? "465");
+  const oauthSecure =
+    String(process.env.GMAIL_OAUTH_SECURE ?? "").toLowerCase() === "true" || oauthPort === 465;
+  const { host: transportHost, servername } = await resolveSmtpHost(oauthHost);
+
   return nodemailer.createTransport({
-    service: "gmail",
+    host: transportHost,
+    port: oauthPort,
+    secure: oauthSecure,
+    connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT_MS ?? "15000"),
+    greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT_MS ?? "10000"),
+    socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT_MS ?? "20000"),
     auth: {
       type: "OAuth2",
       user,
@@ -137,6 +148,9 @@ async function createGmailOauthTransport() {
       clientSecret,
       refreshToken,
       accessToken
+    },
+    tls: {
+      servername
     }
   });
 }
