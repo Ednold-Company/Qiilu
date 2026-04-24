@@ -52,6 +52,13 @@ export function validateRuntimeEnv() {
     requireEnv("GMAIL_OAUTH_USER");
   }
 
+  if (otpProvider === "gmail_api") {
+    requireEnv("GMAIL_OAUTH_CLIENT_ID");
+    requireEnv("GMAIL_OAUTH_CLIENT_SECRET");
+    requireEnv("GMAIL_OAUTH_REFRESH_TOKEN");
+    requireEnv("GMAIL_OAUTH_USER");
+  }
+
   const paymentProvider = (process.env.PAYMENT_PROVIDER ?? "mock").trim().toLowerCase();
 
   if (paymentProvider === "paystack") {
