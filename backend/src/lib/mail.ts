@@ -1,5 +1,6 @@
 import dns from "node:dns/promises";
 import nodemailer from "nodemailer";
+import { google } from "googleapis";
 
 type OtpDeliveryInput = {
   email: string;
@@ -103,6 +104,43 @@ async function createTransport() {
   });
 }
 
+async function createGmailOauthTransport() {
+  const clientId = process.env.GMAIL_OAUTH_CLIENT_ID?.trim();
+  const clientSecret = process.env.GMAIL_OAUTH_CLIENT_SECRET?.trim();
+  const refreshToken = process.env.GMAIL_OAUTH_REFRESH_TOKEN?.trim();
+  const user = process.env.GMAIL_OAUTH_USER?.trim() || process.env.SMTP_USER?.trim();
+  const redirectUri =
+    process.env.GMAIL_OAUTH_REDIRECT_URI?.trim() || "https://developers.google.com/oauthplayground";
+
+  if (!clientId || !clientSecret || !refreshToken || !user) {
+    throw new Error(
+      "GMAIL_OAUTH_CLIENT_ID, GMAIL_OAUTH_CLIENT_SECRET, GMAIL_OAUTH_REFRESH_TOKEN, and GMAIL_OAUTH_USER must be configured"
+    );
+  }
+
+  const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+  oauth2Client.setCredentials({ refresh_token: refreshToken });
+
+  const accessTokenResult = await oauth2Client.getAccessToken();
+  const accessToken = accessTokenResult.token?.trim();
+
+  if (!accessToken) {
+    throw new Error("Could not obtain Gmail OAuth access token");
+  }
+
+  return nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      type: "OAuth2",
+      user,
+      clientId,
+      clientSecret,
+      refreshToken,
+      accessToken
+    }
+  });
+}
+
 async function deliverViaSmtp(input: OtpDeliveryInput): Promise<OtpDeliveryResult> {
   const transporter = await createTransport();
   const from = process.env.SMTP_FROM?.trim() || process.env.SMTP_USER?.trim();
@@ -139,6 +177,45 @@ async function deliverViaSmtp(input: OtpDeliveryInput): Promise<OtpDeliveryResul
   };
 }
 
+async function deliverViaGmailOauth(input: OtpDeliveryInput): Promise<OtpDeliveryResult> {
+  const transporter = await createGmailOauthTransport();
+  const from =
+    process.env.SMTP_FROM?.trim() ||
+    process.env.GMAIL_OAUTH_FROM?.trim() ||
+    process.env.GMAIL_OAUTH_USER?.trim();
+
+  if (!from) {
+    throw new Error("GMAIL_OAUTH_FROM, SMTP_FROM, or GMAIL_OAUTH_USER must be configured");
+  }
+
+  const result = await transporter.sendMail({
+    from,
+    to: input.email,
+    subject: getOtpSubject(input.purpose),
+    text: getOtpText(input),
+    html: getOtpHtml(input)
+  });
+
+  if (process.env.NODE_ENV !== "production") {
+    console.log("[qiilu:gmail-oauth]", {
+      to: input.email,
+      purpose: input.purpose,
+      messageId: result.messageId,
+      accepted: result.accepted,
+      rejected: result.rejected
+    });
+  }
+
+  if (!result.accepted.length || result.rejected.length) {
+    throw new Error("Gmail OAuth provider did not accept the OTP email");
+  }
+
+  return {
+    provider: "gmail_oauth",
+    deliveryHint: `OTP email queued for ${input.email}`
+  };
+}
+
 export async function deliverOtp(input: OtpDeliveryInput): Promise<OtpDeliveryResult> {
   const provider = (process.env.OTP_PROVIDER ?? "console").trim().toLowerCase();
 
@@ -153,6 +230,10 @@ export async function deliverOtp(input: OtpDeliveryInput): Promise<OtpDeliveryRe
 
   if (provider === "smtp") {
     return deliverViaSmtp(input);
+  }
+
+  if (provider === "gmail_oauth") {
+    return deliverViaGmailOauth(input);
   }
 
   return {
