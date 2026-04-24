@@ -92,9 +92,6 @@ export function LandingScreen() {
               <Link href="/driver" className="rounded-lg p-2 text-lg font-medium hover:bg-muted">
                 Drive
               </Link>
-              <Link href="/admin" className="rounded-lg p-2 text-lg font-medium hover:bg-muted">
-                Ops
-              </Link>
               <Link href="/signup">
                 <Button className="mt-4 w-full">Sign up</Button>
               </Link>
@@ -383,7 +380,6 @@ export function LandingScreen() {
               <ul className="space-y-3">
                 <li><Link href="/passenger" className="text-muted-foreground hover:text-primary">Passenger App</Link></li>
                 <li><Link href="/driver" className="text-muted-foreground hover:text-primary">Driver App</Link></li>
-                <li><Link href="/admin" className="text-muted-foreground hover:text-primary">Admin Ops</Link></li>
               </ul>
             </div>
 

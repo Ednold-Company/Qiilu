@@ -53,7 +53,7 @@ export function proxy(request: NextRequest) {
 
   if (pathname.startsWith(adminRoute)) {
     if (!hasAuth) {
-      return NextResponse.redirect(new URL("/login", request.url));
+      return NextResponse.redirect(new URL("/login?admin=1", request.url));
     }
 
     if (role !== "ADMIN") {

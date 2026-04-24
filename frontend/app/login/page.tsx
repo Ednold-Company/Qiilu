@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   ChevronRight,
@@ -35,6 +35,22 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [activeRole, setActiveRole] = useState<LoginRole>("PASSENGER");
   const [error, setError] = useState<string | null>(null);
+  const [adminMode, setAdminMode] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      setAdminMode(params.get("admin") === "1");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (adminMode) {
+      setActiveRole("ADMIN");
+    } else if (activeRole === "ADMIN") {
+      setActiveRole("PASSENGER");
+    }
+  }, [activeRole, adminMode]);
 
   const submit = async () => {
     setLoading(true);
@@ -210,17 +226,19 @@ export default function LoginPage() {
                 >
                   Driver Partner
                 </button>
-                <button
-                  onClick={() => setActiveRole("ADMIN")}
-                  className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition-all duration-200 ${
-                    activeRole === "ADMIN"
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                  type="button"
-                >
-                  Admin
-                </button>
+                {adminMode ? (
+                  <button
+                    onClick={() => setActiveRole("ADMIN")}
+                    className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition-all duration-200 ${
+                      activeRole === "ADMIN"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                    type="button"
+                  >
+                    Admin
+                  </button>
+                ) : null}
               </div>
 
               <AuthField label="Phone Number">
@@ -329,11 +347,11 @@ export default function LoginPage() {
 
           <div className="mb-5 rounded-[1.75rem] border border-border bg-card p-5 shadow-sm">
             <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              Passenger and driver access
+              {adminMode ? "Administrative access" : "Passenger and driver access"}
             </div>
-            <div className="text-xl font-bold">Sign in and continue from where you stopped.</div>
+            <div className="text-xl font-bold">{adminMode ? "Admin sign-in for Qiilu operations." : "Sign in and continue from where you stopped."}</div>
             <div className="mt-2 text-sm text-muted-foreground">
-              Live rides, payouts, safety tools, and web-first mobility in one app shell.
+              {adminMode ? "Restricted access for operations, KYC review, payouts, and incident handling." : "Live rides, payouts, safety tools, and web-first mobility in one app shell."}
             </div>
           </div>
 
@@ -363,15 +381,17 @@ export default function LoginPage() {
             >
               Driver
             </button>
-            <button
-              onClick={() => setActiveRole("ADMIN")}
-              className={`flex-1 rounded-lg py-2 text-sm font-semibold transition-all duration-200 ${
-                activeRole === "ADMIN" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
-              }`}
-              type="button"
-            >
-              Admin
-            </button>
+            {adminMode ? (
+              <button
+                onClick={() => setActiveRole("ADMIN")}
+                className={`flex-1 rounded-lg py-2 text-sm font-semibold transition-all duration-200 ${
+                  activeRole === "ADMIN" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
+                }`}
+                type="button"
+              >
+                Admin
+              </button>
+            ) : null}
           </div>
 
           <AuthField label="Phone Number">
