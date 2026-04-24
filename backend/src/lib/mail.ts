@@ -1,3 +1,4 @@
+import dns from "node:dns/promises";
 import nodemailer from "nodemailer";
 
 type OtpDeliveryInput = {
@@ -54,7 +55,25 @@ function getOtpHtml(input: OtpDeliveryInput) {
   `;
 }
 
-function createTransport() {
+async function resolveSmtpHost(host: string) {
+  const forceIpv4 = String(process.env.SMTP_FORCE_IPV4 ?? "true").toLowerCase() !== "false";
+
+  if (!forceIpv4) {
+    return { host, servername: host };
+  }
+
+  try {
+    const resolved = await dns.lookup(host, { family: 4 });
+    return {
+      host: resolved.address,
+      servername: host
+    };
+  } catch {
+    return { host, servername: host };
+  }
+}
+
+async function createTransport() {
   const host = process.env.SMTP_HOST?.trim();
   const port = Number(process.env.SMTP_PORT ?? "587");
   const user = process.env.SMTP_USER?.trim();
@@ -65,19 +84,27 @@ function createTransport() {
     throw new Error("SMTP_HOST, SMTP_PORT, SMTP_USER, and SMTP_PASS must be configured");
   }
 
+  const { host: transportHost, servername } = await resolveSmtpHost(host);
+
   return nodemailer.createTransport({
-    host,
+    host: transportHost,
     port,
     secure,
+    connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT_MS ?? "15000"),
+    greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT_MS ?? "10000"),
+    socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT_MS ?? "20000"),
     auth: {
       user,
       pass
+    },
+    tls: {
+      servername
     }
   });
 }
 
 async function deliverViaSmtp(input: OtpDeliveryInput): Promise<OtpDeliveryResult> {
-  const transporter = createTransport();
+  const transporter = await createTransport();
   const from = process.env.SMTP_FROM?.trim() || process.env.SMTP_USER?.trim();
 
   if (!from) {
