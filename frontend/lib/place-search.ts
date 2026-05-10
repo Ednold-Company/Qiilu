@@ -129,6 +129,73 @@ export async function suggestPlaces(input: {
     }));
 }
 
+export async function suggestNearbyPopularPlaces(input: {
+  proximity: { lat: number; lng: number };
+  limit?: number;
+}) {
+  if (!geoapifyApiKey) {
+    return [] as PlaceSuggestion[];
+  }
+
+  const endpoint = new URL("https://api.geoapify.com/v2/places");
+  endpoint.searchParams.set(
+    "categories",
+    [
+      "commercial.shopping_mall",
+      "catering.restaurant",
+      "tourism.attraction",
+      "healthcare.hospital",
+      "education.university",
+      "airport"
+    ].join(",")
+  );
+  endpoint.searchParams.set("filter", `circle:${input.proximity.lng},${input.proximity.lat},9000`);
+  endpoint.searchParams.set("bias", `proximity:${input.proximity.lng},${input.proximity.lat}`);
+  endpoint.searchParams.set("limit", String(input.limit ?? 6));
+  endpoint.searchParams.set("apiKey", geoapifyApiKey);
+
+  const response = await fetch(endpoint.toString());
+
+  if (!response.ok) {
+    throw new Error(`Nearby place suggestions failed with ${response.status}`);
+  }
+
+  const payload = (await response.json()) as {
+    features?: Array<{
+      properties?: {
+        place_id?: string;
+        name?: string;
+        formatted?: string;
+        address_line1?: string;
+        address_line2?: string;
+        lat?: number;
+        lon?: number;
+      };
+    }>;
+  };
+
+  return (payload.features ?? [])
+    .map((feature) => feature.properties)
+    .filter(
+      (item): item is NonNullable<typeof item> & { place_id: string; lat: number; lon: number } =>
+        Boolean(item?.place_id) &&
+        typeof item?.lat === "number" &&
+        typeof item?.lon === "number" &&
+        Boolean(item?.name || item?.formatted || item?.address_line1)
+    )
+    .map((item) => ({
+      id: item.place_id,
+      name: item.name?.trim() || item.address_line1?.trim() || item.formatted?.trim() || "Nearby place",
+      fullAddress:
+        item.formatted?.trim() ||
+        [item.address_line1?.trim(), item.address_line2?.trim()].filter(Boolean).join(", ") ||
+        item.name?.trim() ||
+        "Nearby place",
+      lat: item.lat,
+      lng: item.lon
+    }));
+}
+
 export async function retrievePlace(input: {
   suggestion: PlaceSuggestion;
   sessionToken: string;

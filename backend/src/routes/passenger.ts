@@ -392,15 +392,23 @@ passengerRouter.put("/experience", requireAuth, async (request: AuthenticatedReq
     safetyShareEnabled?: boolean;
   };
 
-  const trustedContacts = toTrustedContacts(body.trustedContacts);
+  const currentUser = await prisma.user.findUnique({
+    where: { id: request.auth?.userId }
+  });
+
+  if (!currentUser) {
+    response.status(404).json({ message: "Passenger not found" });
+    return;
+  }
+
   const user = await prisma.user.update({
     where: { id: request.auth?.userId },
     data: {
       preferredPayment: body.preferredPayment,
-      momoProvider: body.momoProvider?.trim() || "MTN MoMo",
-      trustedContacts,
-      lowBandwidthMode: Boolean(body.lowBandwidthMode),
-      safetyShareEnabled: body.safetyShareEnabled ?? true
+      momoProvider: body.momoProvider === undefined ? undefined : body.momoProvider.trim() || "MTN MoMo",
+      trustedContacts: body.trustedContacts === undefined ? undefined : toTrustedContacts(body.trustedContacts),
+      lowBandwidthMode: body.lowBandwidthMode === undefined ? undefined : Boolean(body.lowBandwidthMode),
+      safetyShareEnabled: body.safetyShareEnabled
     }
   });
 

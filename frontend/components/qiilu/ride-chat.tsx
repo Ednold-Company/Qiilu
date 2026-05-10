@@ -502,7 +502,7 @@ export function DriverMessagesMobileLive({ user }: { user: SessionUser }) {
   const chat = useRideChat();
 
   return (
-    <DriverShell title="Messages" active="account">
+    <DriverShell title="Messages" active="messages">
       {chat.loading ? (
         <ChatEmpty title="Loading conversations" description="Qiilu is syncing your ride chat." />
       ) : (

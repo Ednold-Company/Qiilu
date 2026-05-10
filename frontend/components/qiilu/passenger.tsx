@@ -34,6 +34,7 @@ import { locationCatalog } from "@/lib/location-catalog";
 import {
   createPlaceSearchSession,
   retrievePlace,
+  suggestNearbyPopularPlaces,
   suggestPlaces,
   type PlaceSuggestion,
   type ResolvedPlace
@@ -183,6 +184,7 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
   const [currentPickupAnchor, setCurrentPickupAnchor] = useState<LiveLocation | null>(null);
   const [pickupSuggestions, setPickupSuggestions] = useState<PlaceSuggestion[]>([]);
   const [destinationSuggestions, setDestinationSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [popularDestinations, setPopularDestinations] = useState<PlaceSuggestion[]>([]);
   const [pickupSelection, setPickupSelection] = useState<ResolvedPlace | null>(null);
   const [destinationSelection, setDestinationSelection] = useState<ResolvedPlace | null>(null);
   const [isResolvingPickupSuggestion, setIsResolvingPickupSuggestion] = useState(false);
@@ -200,10 +202,52 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
   const searchTimeoutRef = useRef<number | null>(null);
   const pickupSearchSessionRef = useRef(createPlaceSearchSession());
   const destinationSearchSessionRef = useRef(createPlaceSearchSession());
-  const quickDestinations = useMemo(
+  const nearbySuggestionKey = liveLocation ? `${liveLocation.lat.toFixed(3)},${liveLocation.lng.toFixed(3)}` : null;
+  const nearbySuggestionAnchor = useMemo(() => {
+    if (!nearbySuggestionKey) {
+      return null;
+    }
+
+    const [lat, lng] = nearbySuggestionKey.split(",").map(Number);
+    return { lat, lng };
+  }, [nearbySuggestionKey]);
+  const fallbackQuickDestinations = useMemo(
     () => locationCatalog.filter((location) => location.label !== "Current location, East Legon").slice(0, 4),
     []
   );
+  const quickDestinations = useMemo(() => {
+    const seenNearbyLabels = new Set<string>();
+    const nearby = popularDestinations.filter((place) => {
+      const key = place.name.trim().toLowerCase();
+
+      if (seenNearbyLabels.has(key)) {
+        return false;
+      }
+
+      seenNearbyLabels.add(key);
+      return true;
+    }).slice(0, 4).map((place) => ({
+      id: place.id,
+      label: place.name,
+      suggestion: place
+    }));
+
+    if (nearby.length > 0) {
+      return nearby;
+    }
+
+    return fallbackQuickDestinations.map((location) => ({
+      id: `catalog-${location.label}`,
+      label: location.label,
+      suggestion: {
+        id: `catalog-${location.label}`,
+        name: location.label,
+        fullAddress: location.label,
+        lat: location.lat,
+        lng: location.lng
+      } satisfies PlaceSuggestion
+    }));
+  }, [fallbackQuickDestinations, popularDestinations]);
 
   useEffect(() => {
     if (!("geolocation" in navigator)) {
@@ -321,6 +365,30 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
 
     return () => window.clearTimeout(timeoutId);
   }, [destination, destinationSelection, liveLocation]);
+
+  useEffect(() => {
+    if (!nearbySuggestionAnchor) {
+      return;
+    }
+
+    let cancelled = false;
+
+    suggestNearbyPopularPlaces({ proximity: nearbySuggestionAnchor, limit: 6 })
+      .then((results) => {
+        if (!cancelled) {
+          setPopularDestinations(results);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPopularDestinations([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [nearbySuggestionAnchor]);
 
   useEffect(() => {
     const currentVehicle = vehicleOptions.find((option) => option.id === selectedVehicleId) ?? null;
@@ -632,16 +700,24 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
     setDestinationSuggestions([]);
   };
 
-  const chooseQuickDestination = (label: string) => {
+  const chooseQuickDestination = (id: string) => {
     if (!pickup.trim() && liveLocation) {
       setPickup("Current location");
       setPickupSelection(null);
       setCurrentPickupAnchor(liveLocation);
     }
 
-    setDestination(label);
+    const quickDestination = quickDestinations.find((location) => location.id === id);
+
+    if (quickDestination?.suggestion) {
+      void selectDestinationSuggestion(quickDestination.suggestion).finally(() => setMobileDrawerOpen(false));
+      return;
+    }
+
+    setDestination(quickDestination?.label ?? "");
     setDestinationSelection(null);
     setDestinationSuggestions([]);
+    setMobileDrawerOpen(false);
   };
 
   const handlePickupInputChange = (value: string) => {
@@ -742,6 +818,10 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
         : isBooking
           ? "searching"
           : "booking";
+  const canCancelActiveRide = Boolean(
+    activeRide && ["SEARCHING", "SCHEDULED", "ACCEPTED"].includes(activeRide.ride.status)
+  );
+  const cancelRideLabel = activeRide?.ride.status === "ACCEPTED" ? "Cancel assigned ride" : "Cancel request";
 
   useEffect(() => {
     if (mobileStep !== "booking") {
@@ -924,14 +1004,14 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
                     <div className="flex flex-wrap gap-2">
                       {quickDestinations.map((location) => (
                         <button
-                          key={location.label}
+                          key={location.id}
                           type="button"
                           className={`rounded-full border px-3 py-2 text-sm font-medium transition-colors ${
                             destination === location.label
                               ? "border-primary bg-primary/10 text-primary"
                               : "border-border bg-background text-muted-foreground dark:bg-[#171c22]"
                           }`}
-                          onClick={() => chooseQuickDestination(location.label)}
+                          onClick={() => chooseQuickDestination(location.id)}
                         >
                           {location.label}
                         </button>
@@ -1063,6 +1143,16 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
                         Continue MoMo approval
                       </Button>
                     ) : null}
+                    {canCancelActiveRide ? (
+                      <Button
+                        variant="outline"
+                        className="mt-3 w-full rounded-xl border-destructive/30 text-destructive hover:bg-destructive/10"
+                        onClick={cancelRide}
+                        disabled={isCancellingRide}
+                      >
+                        {isCancellingRide ? "Cancelling..." : cancelRideLabel}
+                      </Button>
+                    ) : null}
                   </div>
 
                   <div className="mt-4 rounded-2xl border border-border bg-muted/40 p-4 dark:bg-white/5">
@@ -1147,7 +1237,7 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
         isResolvingPickupSuggestion={isResolvingPickupSuggestion}
         isResolvingDestinationSuggestion={isResolvingDestinationSuggestion}
         onSwapRoute={swapRoute}
-        quickDestinations={quickDestinations.map((location) => location.label)}
+        quickDestinations={quickDestinations.map((location) => ({ id: location.id, label: location.label }))}
         onQuickDestination={chooseQuickDestination}
         onUseLivePickup={useLivePickup}
         selectedVehicle={
@@ -1168,7 +1258,7 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
         onPaymentMethodChange={setPaymentMethod}
         canBook={canBook}
         onRequestRide={createRide}
-        onCancelRide={mobileStep === "searching" ? cancelRide : undefined}
+        onCancelRide={canCancelActiveRide ? cancelRide : undefined}
         isCancelling={isCancellingRide}
         initials={initials}
         rideSummary={
@@ -1270,14 +1360,14 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
                   </button>
                   {quickDestinations.map((location) => (
                     <button
-                      key={location.label}
+                      key={location.id}
                       type="button"
                       className={`shrink-0 rounded-full border px-4 py-2 text-sm font-semibold ${
                         destination === location.label
                           ? "border-primary bg-primary/10 text-primary"
                           : "border-border bg-background text-muted-foreground dark:bg-[#171c22]"
                       }`}
-                    onClick={() => chooseQuickDestination(location.label)}
+                    onClick={() => chooseQuickDestination(location.id)}
                     >
                       {location.label}
                     </button>
@@ -1415,6 +1505,16 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
                       onClick={() => window.open(activeRide?.payment.authorizationUrl ?? "", "_blank", "noopener,noreferrer")}
                     >
                       Continue MoMo approval
+                    </Button>
+                  ) : null}
+                  {canCancelActiveRide ? (
+                    <Button
+                      variant="outline"
+                      className="mt-3 h-11 w-full rounded-xl border-destructive/30 text-destructive hover:bg-destructive/10"
+                      onClick={cancelRide}
+                      disabled={isCancellingRide}
+                    >
+                      {isCancellingRide ? "Cancelling..." : cancelRideLabel}
                     </Button>
                   ) : null}
                 </div>

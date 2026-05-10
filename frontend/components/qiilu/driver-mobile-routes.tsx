@@ -90,6 +90,12 @@ type DriverHistoryResponse = {
   cancelled: Array<{ route: string; time: string; rider: string; gross: number; net: number }>;
 };
 
+type DriverRequestsResponse = {
+  dispatchEnabled?: boolean;
+  message?: string | null;
+  requests: DriverRequestItem[];
+};
+
 type DriverStatusResponse = {
   status: {
     availability: "OFFLINE" | "AVAILABLE" | "ON_TRIP";
@@ -138,7 +144,7 @@ type DriverKycResponse = {
 
 type ShellProps = {
   title: string;
-  active: "home" | "rides" | "wallet" | "account";
+  active: "home" | "rides" | "messages" | "wallet" | "account";
   children: ReactNode;
 };
 
@@ -158,12 +164,13 @@ export function DriverShell({ title, active, children }: ShellProps) {
         </button>
       </div>
 
-      <div className="min-h-[calc(100vh-9rem)] overflow-y-auto px-4 pb-24 pt-6">{children}</div>
+      <div className="min-h-[calc(100dvh-9rem)] overflow-y-auto px-4 pb-[calc(7rem+env(safe-area-inset-bottom))] pt-6">{children}</div>
 
-      <div className="fixed bottom-0 left-0 right-0 z-30 h-20 border-t border-border bg-card sm:left-auto sm:right-auto sm:w-full sm:max-w-[430px]">
-        <div className="grid h-full grid-cols-4 items-center px-3 pb-4 pt-2">
+      <div className="fixed bottom-0 left-0 right-0 z-30 mx-auto h-[calc(5rem+env(safe-area-inset-bottom))] w-full border-t border-border bg-card/92 shadow-[0_-10px_30px_rgba(0,0,0,0.10)] backdrop-blur sm:max-w-[430px]">
+        <div className="grid h-full grid-cols-5 items-center gap-1 px-3 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
           <DriverBottomItem href="/driver" icon={Home} label="Home" active={active === "home"} />
           <DriverBottomItem href="/driver/rides" icon={Navigation} label="Rides" active={active === "rides"} />
+          <DriverBottomItem href="/driver/messages" icon={MessageSquare} label="Messages" active={active === "messages"} />
           <DriverBottomItem href="/driver/wallet" icon={Wallet} label="Wallet" active={active === "wallet"} />
           <DriverBottomItem href="/driver/account" icon={User} label="Account" active={active === "account"} />
         </div>
@@ -186,7 +193,9 @@ function DriverBottomItem({
   return (
     <Link
       href={href}
-      className={`flex min-w-0 flex-col items-center justify-center text-center ${active ? "text-primary" : "text-muted-foreground"}`}
+      className={`flex min-w-0 flex-col items-center justify-center rounded-2xl px-1 py-2 text-center transition-colors ${
+        active ? "bg-primary/10 text-primary shadow-sm" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+      }`}
     >
       <Icon className="mb-1 h-6 w-6" />
       <span className="block max-w-full text-[10px] font-semibold leading-none">{label}</span>
@@ -231,21 +240,36 @@ function statusText(value: DriverStatusResponse["status"]["availability"] | unde
 export function DriverHomeMobilePage({ user }: { user: SessionUser }) {
   const [requests, setRequests] = useState<DriverRequestItem[]>([]);
   const [wallet, setWallet] = useState<DriverWalletResponse["wallet"] | null>(null);
+  const [history, setHistory] = useState<DriverHistoryResponse>({
+    upcoming: [],
+    past: [],
+    cancelled: []
+  });
+  const [kycStatus, setKycStatus] = useState<DriverKycResponse["kycStatus"]>("PENDING");
+  const [dispatchMessage, setDispatchMessage] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [availability, setAvailability] =
     useState<DriverStatusResponse["status"]["availability"]>("OFFLINE");
   const [loading, setLoading] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isSendingSos, setIsSendingSos] = useState(false);
   const [currentCoords, setCurrentCoords] = useState<{ lat: number; lng: number } | null>(null);
 
   const load = async () => {
     try {
-      const [requestPayload, walletPayload, statusPayload] = await Promise.all([
-        fetchJson<{ requests: DriverRequestItem[] }>("/driver/requests"),
+      const [requestPayload, walletPayload, statusPayload, historyPayload, kycPayload] = await Promise.all([
+        fetchJson<DriverRequestsResponse>("/driver/requests"),
         fetchJson<DriverWalletResponse>(`/driver/wallet/${user.id}`),
-        fetchJson<DriverStatusResponse>(`/driver/status/${user.id}`)
+        fetchJson<DriverStatusResponse>(`/driver/status/${user.id}`),
+        fetchJson<DriverHistoryResponse>(`/driver/history/${user.id}`),
+        fetchJson<DriverKycResponse>(`/driver/kyc/${user.id}`)
       ]);
       setRequests(requestPayload.requests);
+      setDispatchMessage(requestPayload.message ?? null);
       setWallet(walletPayload.wallet);
       setAvailability(statusPayload.status.availability);
+      setHistory(historyPayload);
+      setKycStatus(kycPayload.kycStatus);
     } finally {
       setLoading(false);
     }
@@ -282,6 +306,12 @@ export function DriverHomeMobilePage({ user }: { user: SessionUser }) {
 
   const currentRequest = requests[0] ?? null;
   const isOnline = availability !== "OFFLINE";
+  const completedRideCount = history.past.length;
+  const acceptedRideCount = history.upcoming.length + history.past.length;
+  const cancelledRideCount = history.cancelled.length;
+  const totalRideDecisions = acceptedRideCount + cancelledRideCount;
+  const acceptanceRate = totalRideDecisions ? Math.round((acceptedRideCount / totalRideDecisions) * 100) : 0;
+  const isKycApproved = kycStatus === "APPROVED";
   const step: "idle" | "incoming" | "active" = !isOnline
     ? "idle"
     : availability === "ON_TRIP"
@@ -291,29 +321,59 @@ export function DriverHomeMobilePage({ user }: { user: SessionUser }) {
         : "idle";
 
   const syncAvailability = async (next: "OFFLINE" | "AVAILABLE") => {
-    await fetchJson(`/driver/status/${user.id}`, {
-      method: "PUT",
-      body: JSON.stringify({ availability: next })
-    });
-    setAvailability(next);
-    if (next === "OFFLINE") {
-      setRequests([]);
-    } else {
-      void load();
+    setIsSyncing(true);
+    setActionMessage(null);
+
+    try {
+      await fetchJson(`/driver/status/${user.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ availability: next })
+      });
+      setAvailability(next);
+      setActionMessage(next === "AVAILABLE" ? "You are online. Incoming ride requests will appear here." : "You are offline.");
+      if (next === "OFFLINE") {
+        setRequests([]);
+      } else {
+        void load();
+      }
+    } catch (error) {
+      setActionMessage(error instanceof Error ? error.message : "Could not update driver status.");
+    } finally {
+      setIsSyncing(false);
     }
   };
 
   const acceptRide = async () => {
     if (!currentRequest) return;
-    await fetchJson(`/driver/requests/${currentRequest.id}/accept`, { method: "POST" });
-    setAvailability("ON_TRIP");
-    void load();
+    setIsSyncing(true);
+    setActionMessage(null);
+
+    try {
+      await fetchJson(`/driver/requests/${currentRequest.id}/accept`, { method: "POST" });
+      setAvailability("ON_TRIP");
+      setActionMessage("Ride accepted. The passenger can message you from the trip chat.");
+      void load();
+    } catch (error) {
+      setActionMessage(error instanceof Error ? error.message : "Could not accept ride.");
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const rejectRide = async () => {
     if (!currentRequest) return;
-    await fetchJson(`/driver/requests/${currentRequest.id}/reject`, { method: "POST" });
-    void load();
+    setIsSyncing(true);
+    setActionMessage(null);
+
+    try {
+      await fetchJson(`/driver/requests/${currentRequest.id}/reject`, { method: "POST" });
+      setActionMessage("Ride declined and returned to dispatch.");
+      void load();
+    } catch (error) {
+      setActionMessage(error instanceof Error ? error.message : "Could not decline ride.");
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const completeRide = async () => {
@@ -328,6 +388,36 @@ export function DriverHomeMobilePage({ user }: { user: SessionUser }) {
     });
     setAvailability("AVAILABLE");
     void load();
+  };
+
+  const sendEmergencyIncident = async () => {
+    if (!currentRequest) return;
+    setIsSendingSos(true);
+    setActionMessage(null);
+
+    try {
+      await fetchJson("/support/incidents", {
+        method: "POST",
+        body: JSON.stringify({
+          rideId: currentRequest.id,
+          category: "Driver emergency SOS",
+          severity: "CRITICAL",
+          description: [
+            `Driver ${user.name} triggered SOS.`,
+            `Passenger: ${currentRequest.riderName}.`,
+            `Pickup: ${currentRequest.pickup}.`,
+            `Destination: ${currentRequest.destination}.`,
+            currentCoords ? `Driver coordinates: ${currentCoords.lat}, ${currentCoords.lng}.` : "Driver coordinates unavailable.",
+            "Police station alert is not automated yet; Qiilu operations must escalate externally."
+          ].join(" ")
+        })
+      });
+      setActionMessage("Emergency sent to Qiilu operations. Police alert integration still needs a real emergency provider.");
+    } catch (error) {
+      setActionMessage(error instanceof Error ? error.message : "Could not send emergency incident.");
+    } finally {
+      setIsSendingSos(false);
+    }
   };
 
   if (loading) {
@@ -409,17 +499,20 @@ export function DriverHomeMobilePage({ user }: { user: SessionUser }) {
               </div>
               <div className="grid grid-cols-3 gap-3 border-t border-border pt-4">
                 <div className="flex flex-col">
-                  <span className="text-xs text-muted-foreground">Trips</span>
-                  <span className="font-bold">{wallet.weeklyTrips}</span>
+                  <span className="text-xs text-muted-foreground">Accepted</span>
+                  <span className="font-bold">{acceptedRideCount}</span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-xs text-muted-foreground">Completion</span>
-                  <span className="font-bold">{wallet.completionRate}%</span>
+                  <span className="text-xs text-muted-foreground">Cancelled</span>
+                  <span className="font-bold">{cancelledRideCount}</span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-xs text-muted-foreground">Commission</span>
-                  <span className="font-bold">{wallet.commissionRate}%</span>
+                  <span className="text-xs text-muted-foreground">Accept rate</span>
+                  <span className="font-bold">{acceptanceRate}%</span>
                 </div>
+              </div>
+              <div className="mt-4 rounded-xl border border-border bg-muted/40 p-3 text-xs font-medium text-muted-foreground">
+                Ride requests appear in the bottom request card while you are online and KYC approved.
               </div>
             </div>
           ) : null}
@@ -431,15 +524,52 @@ export function DriverHomeMobilePage({ user }: { user: SessionUser }) {
               <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
                 <Power className="h-8 w-8 text-muted-foreground" />
               </div>
-              <h2 className="mb-2 text-2xl font-bold">You're offline</h2>
-              <p className="mb-6 text-muted-foreground">Go online to start receiving ride requests.</p>
-              <button
-                onClick={() => void syncAvailability("AVAILABLE")}
-                className="h-14 w-full rounded-full bg-primary text-lg font-bold text-primary-foreground"
-                type="button"
-              >
-                Go Online
-              </button>
+              <h2 className="mb-2 text-2xl font-bold">{isKycApproved ? "You're offline" : "Legal verification required"}</h2>
+              <p className="mb-6 text-muted-foreground">
+                {isKycApproved
+                  ? "Go online to start receiving ride requests."
+                  : "Drivers must submit legal name, Ghana Card or license, vehicle insurance, and road-worthiness documents before dispatch is enabled."}
+              </p>
+              {isKycApproved ? (
+                <button
+                  onClick={() => void syncAvailability("AVAILABLE")}
+                  disabled={isSyncing}
+                  className="h-14 w-full rounded-full bg-primary text-lg font-bold text-primary-foreground disabled:opacity-60"
+                  type="button"
+                >
+                  {isSyncing ? "Updating..." : "Go Online"}
+                </button>
+              ) : (
+                <Link href="/driver/kyc" className="flex h-14 w-full items-center justify-center rounded-full bg-primary text-lg font-bold text-primary-foreground">
+                  Complete KYC
+                </Link>
+              )}
+              {(actionMessage || dispatchMessage) ? (
+                <div className="mt-4 rounded-2xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+                  {actionMessage ?? dispatchMessage}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {step === "idle" && isOnline ? (
+            <div className="pointer-events-auto rounded-t-[2rem] border-t border-border bg-background p-6 pb-32 shadow-2xl">
+              <div className="mb-4 flex items-center gap-3 rounded-2xl border border-border bg-card p-4">
+                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <Bell className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold">Waiting for ride requests</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Accept and decline cards appear here. Passenger messages appear under Messages after a ride is accepted.
+                  </p>
+                </div>
+              </div>
+              {(actionMessage || dispatchMessage) ? (
+                <div className="rounded-2xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+                  {actionMessage ?? dispatchMessage}
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -495,6 +625,7 @@ export function DriverHomeMobilePage({ user }: { user: SessionUser }) {
                 <div className="grid grid-cols-2 gap-4">
                   <button
                     onClick={() => void rejectRide()}
+                    disabled={isSyncing}
                     className="h-16 rounded-2xl border border-border bg-background text-lg font-bold"
                     type="button"
                   >
@@ -502,6 +633,7 @@ export function DriverHomeMobilePage({ user }: { user: SessionUser }) {
                   </button>
                   <button
                     onClick={() => void acceptRide()}
+                    disabled={isSyncing}
                     className="h-16 rounded-2xl bg-primary text-lg font-bold text-primary-foreground shadow-lg shadow-primary/25"
                     type="button"
                   >
@@ -543,12 +675,12 @@ export function DriverHomeMobilePage({ user }: { user: SessionUser }) {
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <button
+                    <Link
+                      href="/driver/messages"
                       className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-foreground"
-                      type="button"
                     >
                       <MessageSquare className="h-5 w-5" />
-                    </button>
+                    </Link>
                     <button
                       className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary/10 text-secondary"
                       type="button"
@@ -559,17 +691,17 @@ export function DriverHomeMobilePage({ user }: { user: SessionUser }) {
                 </div>
 
                 <div className="mb-4 grid grid-cols-3 gap-3">
-                  <button type="button" className="rounded-2xl bg-muted/70 p-4 text-center">
+                  <Link href="/driver/messages" className="rounded-2xl bg-muted/70 p-4 text-center">
                     <MessageSquare className="mx-auto mb-2 h-5 w-5" />
                     <span className="text-xs font-bold">Message</span>
-                  </button>
+                  </Link>
                   <button type="button" className="rounded-2xl bg-muted/70 p-4 text-center">
                     <Navigation className="mx-auto mb-2 h-5 w-5" />
                     <span className="text-xs font-bold">Share</span>
                   </button>
-                  <button type="button" className="rounded-2xl bg-destructive/10 p-4 text-center text-destructive">
+                  <button type="button" onClick={() => void sendEmergencyIncident()} disabled={isSendingSos} className="rounded-2xl bg-destructive/10 p-4 text-center text-destructive disabled:opacity-60">
                     <AlertTriangle className="mx-auto mb-2 h-5 w-5" />
-                    <span className="text-xs font-bold">SOS</span>
+                    <span className="text-xs font-bold">{isSendingSos ? "Sending" : "SOS"}</span>
                   </button>
                 </div>
 
@@ -582,19 +714,27 @@ export function DriverHomeMobilePage({ user }: { user: SessionUser }) {
                 </button>
 
                 <button
+                  onClick={() => void sendEmergencyIncident()}
+                  disabled={isSendingSos}
                   className="flex h-12 w-full items-center justify-center gap-2 rounded-xl font-bold text-destructive transition-colors hover:bg-destructive/5"
                   type="button"
                 >
-                  <ShieldCheck className="h-5 w-5" /> Emergency SOS
+                  <ShieldCheck className="h-5 w-5" /> {isSendingSos ? "Sending SOS..." : "Emergency SOS to Qiilu Ops"}
                 </button>
+                {actionMessage ? (
+                  <div className="mt-3 rounded-2xl border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+                    {actionMessage}
+                  </div>
+                ) : null}
               </div>
             </div>
           ) : null}
 
-          <div className="absolute bottom-0 left-0 w-full border-t border-border bg-background">
-            <div className="grid h-20 grid-cols-4 items-center px-4 pb-4 pt-2">
+          <div className="fixed bottom-0 left-0 right-0 z-30 mx-auto h-[calc(5rem+env(safe-area-inset-bottom))] w-full border-t border-border bg-background/92 shadow-[0_-10px_30px_rgba(0,0,0,0.10)] backdrop-blur sm:max-w-[430px]">
+            <div className="grid h-full grid-cols-5 items-center gap-1 px-3 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
               <DriverBottomItem href="/driver" icon={Home} label="Home" active />
               <DriverBottomItem href="/driver/rides" icon={Navigation} label="Rides" active={step !== "idle"} />
+              <DriverBottomItem href="/driver/messages" icon={MessageSquare} label="Messages" active={false} />
               <DriverBottomItem href="/driver/wallet" icon={Wallet} label="Wallet" active={false} />
               <DriverBottomItem href="/driver/account" icon={User} label="Account" active={false} />
             </div>
@@ -621,9 +761,21 @@ export function DriverRidesMobilePage({ userId }: { userId: string }) {
   }, [userId]);
 
   const currentList = history[activeTab];
+  const acceptedRideCount = history.upcoming.length + history.past.length;
+  const cancelledRideCount = history.cancelled.length;
+  const completedRideCount = history.past.length;
+  const totalRideDecisions = acceptedRideCount + cancelledRideCount;
+  const acceptanceRate = totalRideDecisions ? Math.round((acceptedRideCount / totalRideDecisions) * 100) : 0;
 
   return (
     <DriverShell title="Ride History" active="rides">
+      <div className="mb-6 grid grid-cols-2 gap-3">
+        <StatCard label="Accepted" value={String(acceptedRideCount)} />
+        <StatCard label="Completed" value={String(completedRideCount)} />
+        <StatCard label="Cancelled" value={String(cancelledRideCount)} />
+        <StatCard label="Accept Rate" value={`${acceptanceRate}%`} />
+      </div>
+
       <div className="mb-6 flex rounded-xl border border-border bg-card p-1">
         {(["upcoming", "past", "cancelled"] as const).map((tab) => (
           <button

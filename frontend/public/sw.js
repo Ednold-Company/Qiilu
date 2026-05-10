@@ -1,4 +1,4 @@
-const CACHE_NAME = "qiilu-shell-v1";
+const CACHE_NAME = "qiilu-shell-v2";
 const APP_SHELL = ["/", "/login", "/signup", "/passenger", "/driver", "/offline", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
@@ -29,6 +29,11 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  if (url.pathname.startsWith("/_next/")) {
+    event.respondWith(fetch(request));
+    return;
+  }
+
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request).catch(async () => {
@@ -46,7 +51,7 @@ self.addEventListener("fetch", (event) => {
       }
 
       return fetch(request).then((response) => {
-        if (response.ok && (url.pathname.startsWith("/_next/") || url.pathname.match(/\.(?:js|css|png|svg|jpg|jpeg|webp)$/))) {
+        if (response.ok && url.pathname.match(/\.(?:png|svg|jpg|jpeg|webp)$/)) {
           const responseClone = response.clone();
           void caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
         }

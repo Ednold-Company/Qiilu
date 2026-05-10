@@ -79,6 +79,16 @@ type IncidentItem = {
   } | null;
 };
 
+type PassengerExperience = {
+  preferredPayment: "MOMO" | "CASH";
+  momoProvider: string | null;
+  trustedContacts: string[];
+  lowBandwidthMode: boolean;
+  safetyShareEnabled: boolean;
+};
+
+const momoProviders = ["MTN MoMo", "Telecel Cash", "AirtelTigo Money"];
+
 type MobileShellProps = {
   title: string;
   active: "home" | "rides" | "messages" | "account";
@@ -101,12 +111,12 @@ export function MobileShell({ title, active, children }: MobileShellProps) {
         </button>
       </div>
 
-      <div className="min-h-[calc(100vh-9rem)] overflow-y-auto px-4 pb-24 pt-6 sm:px-6">
+      <div className="min-h-[calc(100dvh-9rem)] overflow-y-auto px-4 pb-[calc(7rem+env(safe-area-inset-bottom))] pt-6 sm:px-6">
         {children}
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 z-30 h-20 border-t border-border bg-background sm:left-auto sm:right-auto sm:w-full sm:max-w-[430px]">
-        <div className="grid h-full grid-cols-4 items-center px-3 pb-4 pt-2">
+      <div className="fixed bottom-0 left-0 right-0 z-30 mx-auto h-[calc(5rem+env(safe-area-inset-bottom))] w-full border-t border-border bg-background/92 shadow-[0_-10px_30px_rgba(0,0,0,0.10)] backdrop-blur sm:max-w-[430px]">
+        <div className="grid h-full grid-cols-4 items-center gap-1 px-3 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
           <BottomItem href="/passenger" icon={Home} label="Home" active={active === "home"} />
           <BottomItem href="/passenger/rides" icon={Car} label="Rides" active={active === "rides"} />
           <BottomItem
@@ -141,7 +151,9 @@ function BottomItem({
   return (
     <Link
       href={href}
-      className={`flex min-w-0 flex-col items-center justify-center text-center ${active ? "text-primary" : "text-muted-foreground"}`}
+      className={`flex min-w-0 flex-col items-center justify-center rounded-2xl px-1 py-2 text-center transition-colors ${
+        active ? "bg-primary/10 text-primary shadow-sm" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+      }`}
     >
       <Icon className="mb-1 h-6 w-6" />
       <span className="block max-w-full text-[10px] font-semibold leading-none">{label}</span>
@@ -443,19 +455,50 @@ export function PassengerFavouritesMobilePage() {
 }
 
 export function PassengerPaymentsMobilePage() {
-  const [user, setUser] = useState<MeResponse["user"] | null>(null);
   const [rides, setRides] = useState<RideItem[]>([]);
+  const [experience, setExperience] = useState<PassengerExperience | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<"MOMO" | "CASH">("MOMO");
+  const [momoProvider, setMomoProvider] = useState("MTN MoMo");
+  const [savingPayment, setSavingPayment] = useState(false);
+  const [paymentMessage, setPaymentMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchJson<MeResponse>("/auth/me")
-      .then((payload) => setUser(payload.user))
-      .catch(() => setUser(null));
+    fetchJson<{ experience: PassengerExperience }>("/passenger/experience")
+      .then((payload) => {
+        setExperience(payload.experience);
+        setPaymentMethod(payload.experience.preferredPayment);
+        setMomoProvider(payload.experience.momoProvider ?? "MTN MoMo");
+      })
+      .catch(() => undefined);
     fetchJson<{ rides: RideItem[] }>("/passenger/rides")
       .then((payload) => setRides(payload.rides))
       .catch(() => setRides([]));
   }, []);
 
   const spent = rides.reduce((total, ride) => total + (ride.actualFareGhs ?? ride.estimatedFareGhs), 0);
+  const savePaymentMethod = async () => {
+    setSavingPayment(true);
+    setPaymentMessage(null);
+
+    try {
+      const payload = await fetchJson<{ experience: PassengerExperience }>("/passenger/experience", {
+        method: "PUT",
+        body: JSON.stringify({
+          preferredPayment: paymentMethod,
+          momoProvider,
+          trustedContacts: experience?.trustedContacts ?? [],
+          lowBandwidthMode: experience?.lowBandwidthMode ?? false,
+          safetyShareEnabled: experience?.safetyShareEnabled ?? true
+        })
+      });
+      setExperience(payload.experience);
+      setPaymentMessage("Payment preference saved. New ride requests will use this by default.");
+    } catch (error) {
+      setPaymentMessage(error instanceof Error ? error.message : "Could not save payment preference.");
+    } finally {
+      setSavingPayment(false);
+    }
+  };
 
   return (
     <MobileShell title="Payments" active="account">
@@ -471,38 +514,88 @@ export function PassengerPaymentsMobilePage() {
         <div className="relative z-10 grid grid-cols-2 gap-3">
           <div className="rounded-xl bg-white/20 p-4">
             <div className="text-xs font-medium text-white/70">Preferred</div>
-            <div className="mt-1 font-bold">{user?.preferredPayment ?? "MoMo"}</div>
+            <div className="mt-1 font-bold">{paymentMethod === "MOMO" ? "MoMo" : "Cash"}</div>
           </div>
           <div className="rounded-xl bg-white/20 p-4">
             <div className="text-xs font-medium text-white/70">Provider</div>
-            <div className="mt-1 font-bold">{user?.momoProvider ?? "Not set"}</div>
+            <div className="mt-1 font-bold">{paymentMethod === "MOMO" ? momoProvider : "Pay driver"}</div>
           </div>
         </div>
       </div>
 
-      <h3 className="mb-4 text-lg font-bold">Payment Methods</h3>
+      <h3 className="mb-4 text-lg font-bold">Default payment method</h3>
       <div className="mb-8 space-y-3">
-        <div className="flex items-center justify-between rounded-2xl border-2 border-primary bg-card p-4 shadow-sm shadow-primary/10">
+        <button
+          type="button"
+          onClick={() => setPaymentMethod("MOMO")}
+          className={`flex w-full items-center justify-between rounded-2xl border-2 bg-card p-4 text-left shadow-sm ${
+            paymentMethod === "MOMO" ? "border-primary shadow-primary/10" : "border-border"
+          }`}
+        >
           <div className="flex items-center gap-4">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
               <CreditCard className="h-6 w-6" />
             </div>
             <div>
               <h4 className="font-bold">Mobile Money</h4>
-              <p className="text-sm text-muted-foreground">{user?.momoProvider ?? "Not configured yet"}</p>
+              <p className="text-sm text-muted-foreground">Passenger approves MoMo after requesting</p>
             </div>
           </div>
-          <div className="rounded bg-primary/10 px-2 py-1 text-[10px] font-bold uppercase text-primary">
-            Primary
-          </div>
-        </div>
+          {paymentMethod === "MOMO" ? (
+            <div className="rounded bg-primary/10 px-2 py-1 text-[10px] font-bold uppercase text-primary">Default</div>
+          ) : null}
+        </button>
 
-        <div className="flex items-center gap-4 rounded-2xl border border-border bg-card p-4 shadow-sm">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted">
-            <Wallet className="h-6 w-6" />
+        {paymentMethod === "MOMO" ? (
+          <div className="rounded-2xl border border-border bg-card p-4">
+            <div className="mb-3 text-sm font-bold">MoMo network</div>
+            <div className="grid gap-2">
+              {momoProviders.map((provider) => (
+                <button
+                  key={provider}
+                  type="button"
+                  onClick={() => setMomoProvider(provider)}
+                  className={`rounded-xl border px-4 py-3 text-left text-sm font-bold ${
+                    momoProvider === provider ? "border-primary bg-primary/10 text-primary" : "border-border bg-muted/40"
+                  }`}
+                >
+                  {provider}
+                </button>
+              ))}
+            </div>
           </div>
-          <h4 className="font-bold">Cash</h4>
-        </div>
+        ) : null}
+
+        <button
+          type="button"
+          onClick={() => setPaymentMethod("CASH")}
+          className={`flex w-full items-center justify-between rounded-2xl border bg-card p-4 text-left shadow-sm ${
+            paymentMethod === "CASH" ? "border-primary bg-primary/5" : "border-border"
+          }`}
+        >
+          <div className="flex items-center gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted">
+              <Wallet className="h-6 w-6" />
+            </div>
+            <div>
+              <h4 className="font-bold">Cash</h4>
+              <p className="text-sm text-muted-foreground">Pay the driver directly after the trip</p>
+            </div>
+          </div>
+          {paymentMethod === "CASH" ? (
+            <div className="rounded bg-primary/10 px-2 py-1 text-[10px] font-bold uppercase text-primary">Default</div>
+          ) : null}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => void savePaymentMethod()}
+          disabled={savingPayment}
+          className="h-12 w-full rounded-xl bg-primary font-bold text-primary-foreground disabled:opacity-60"
+        >
+          {savingPayment ? "Saving..." : "Save payment preference"}
+        </button>
+        {paymentMessage ? <div className="rounded-2xl border border-border bg-card p-4 text-sm text-muted-foreground">{paymentMessage}</div> : null}
       </div>
 
       <h3 className="mb-4 text-lg font-bold">Recent Transactions</h3>

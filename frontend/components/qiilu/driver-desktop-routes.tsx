@@ -6,6 +6,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Activity,
+  AlertTriangle,
   Bell,
   Car,
   CheckCircle2,
@@ -86,6 +87,12 @@ type DriverHistoryResponse = {
   upcoming: Array<{ route: string; time: string; rider: string; gross: number; net: number }>;
   past: Array<{ route: string; time: string; rider: string; gross: number; net: number }>;
   cancelled: Array<{ route: string; time: string; rider: string; gross: number; net: number }>;
+};
+
+type DriverRequestsResponse = {
+  dispatchEnabled?: boolean;
+  message?: string | null;
+  requests: DriverRequestItem[];
 };
 
 type DriverStatusResponse = {
@@ -396,25 +403,38 @@ function DriverHomeDesktopPageLegacy({ user }: { user: SessionUser }) {
 export function DriverHomeDesktopPage({ user }: { user: SessionUser }) {
   const [requests, setRequests] = useState<DriverRequestItem[]>([]);
   const [wallet, setWallet] = useState<DriverWalletResponse["wallet"] | null>(null);
+  const [history, setHistory] = useState<DriverHistoryResponse>({ upcoming: [], past: [], cancelled: [] });
+  const [kycStatus, setKycStatus] = useState<DriverKycResponse["kycStatus"]>("PENDING");
+  const [dispatchMessage, setDispatchMessage] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [availability, setAvailability] = useState<DriverStatusResponse["status"]["availability"]>("OFFLINE");
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isSendingSos, setIsSendingSos] = useState(false);
   const [currentCoords, setCurrentCoords] = useState<{ lat: number; lng: number } | null>(null);
 
-  useEffect(() => {
-    Promise.all([
-      fetchJson<{ requests: DriverRequestItem[] }>("/driver/requests"),
+  const loadDashboard = async () => {
+    const [requestPayload, walletPayload, statusPayload, historyPayload, kycPayload] = await Promise.all([
+      fetchJson<DriverRequestsResponse>("/driver/requests"),
       fetchJson<DriverWalletResponse>(`/driver/wallet/${user.id}`),
-      fetchJson<DriverStatusResponse>(`/driver/status/${user.id}`)
-    ])
-      .then(([requestPayload, walletPayload, statusPayload]) => {
-        setRequests(requestPayload.requests);
-        setWallet(walletPayload.wallet);
-        setAvailability(statusPayload.status.availability);
-      })
-      .catch(() => {
-        setRequests([]);
-        setWallet(null);
-        setAvailability("OFFLINE");
-      });
+      fetchJson<DriverStatusResponse>(`/driver/status/${user.id}`),
+      fetchJson<DriverHistoryResponse>(`/driver/history/${user.id}`),
+      fetchJson<DriverKycResponse>(`/driver/kyc/${user.id}`)
+    ]);
+
+    setRequests(requestPayload.requests);
+    setDispatchMessage(requestPayload.message ?? null);
+    setWallet(walletPayload.wallet);
+    setAvailability(statusPayload.status.availability);
+    setHistory(historyPayload);
+    setKycStatus(kycPayload.kycStatus);
+  };
+
+  useEffect(() => {
+    loadDashboard().catch(() => {
+      setRequests([]);
+      setWallet(null);
+      setAvailability("OFFLINE");
+    });
   }, [user.id]);
 
   useEffect(() => {
@@ -444,6 +464,76 @@ export function DriverHomeDesktopPage({ user }: { user: SessionUser }) {
 
   const request = requests[0] ?? null;
   const requestCards = requests.slice(0, 3);
+  const completedRideCount = history.past.length;
+  const acceptedRideCount = history.upcoming.length + history.past.length;
+  const cancelledRideCount = history.cancelled.length;
+  const totalRideDecisions = acceptedRideCount + cancelledRideCount;
+  const acceptanceRate = totalRideDecisions ? Math.round((acceptedRideCount / totalRideDecisions) * 100) : 0;
+  const isKycApproved = kycStatus === "APPROVED";
+
+  const syncAvailability = async (next: "OFFLINE" | "AVAILABLE") => {
+    setIsSyncing(true);
+    setActionMessage(null);
+
+    try {
+      await fetchJson(`/driver/status/${user.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ availability: next })
+      });
+      setAvailability(next);
+      setActionMessage(next === "AVAILABLE" ? "Driver is online. Incoming requests will appear in Active Requests." : "Driver is offline.");
+      await loadDashboard();
+    } catch (error) {
+      setActionMessage(error instanceof Error ? error.message : "Could not update driver status.");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleRideAction = async (rideId: string, action: "accept" | "reject") => {
+    setIsSyncing(true);
+    setActionMessage(null);
+
+    try {
+      await fetchJson(`/driver/requests/${rideId}/${action}`, { method: "POST" });
+      setActionMessage(action === "accept" ? "Ride accepted. Passenger chat is available in Messages." : "Ride declined and returned to dispatch.");
+      await loadDashboard();
+    } catch (error) {
+      setActionMessage(error instanceof Error ? error.message : "Could not update ride request.");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const sendEmergencyIncident = async () => {
+    if (!request) return;
+    setIsSendingSos(true);
+    setActionMessage(null);
+
+    try {
+      await fetchJson("/support/incidents", {
+        method: "POST",
+        body: JSON.stringify({
+          rideId: request.id,
+          category: "Driver emergency SOS",
+          severity: "CRITICAL",
+          description: [
+            `Driver ${user.name} triggered SOS from desktop dashboard.`,
+            `Passenger: ${request.riderName}.`,
+            `Pickup: ${request.pickup}.`,
+            `Destination: ${request.destination}.`,
+            currentCoords ? `Driver coordinates: ${currentCoords.lat}, ${currentCoords.lng}.` : "Driver coordinates unavailable.",
+            "Police station alert is not automated yet; Qiilu operations must escalate externally."
+          ].join(" ")
+        })
+      });
+      setActionMessage("Emergency sent to Qiilu operations. Police alert integration still needs a real emergency provider.");
+    } catch (error) {
+      setActionMessage(error instanceof Error ? error.message : "Could not send emergency incident.");
+    } finally {
+      setIsSendingSos(false);
+    }
+  };
 
   return (
     <DriverDesktopShell user={user} title="Dashboard" active="dashboard">
@@ -460,21 +550,31 @@ export function DriverHomeDesktopPage({ user }: { user: SessionUser }) {
                   {wallet?.totalBalanceGhs.toFixed(2) ?? "0.00"}
                 </div>
               </div>
-              <div
-                className={`rounded-full px-4 py-2 text-sm font-bold ${
+              <button
+                type="button"
+                onClick={() => void syncAvailability(availability === "OFFLINE" ? "AVAILABLE" : "OFFLINE")}
+                disabled={isSyncing || !isKycApproved}
+                className={`rounded-full px-4 py-2 text-sm font-bold disabled:opacity-60 ${
                   availability === "OFFLINE" ? "bg-white/20" : "bg-secondary text-secondary-foreground"
                 }`}
               >
                 <Power className="mr-2 inline h-4 w-4" />
-                {availability === "OFFLINE" ? "Offline" : "Online"}
-              </div>
+                {!isKycApproved ? "KYC Required" : availability === "OFFLINE" ? "Go Online" : "Go Offline"}
+              </button>
             </div>
-            <div className="mt-8 grid grid-cols-3 gap-4 border-t border-white/20 pt-8">
-              <StatCard label="Completed Trips" value={String(wallet?.weeklyTrips ?? 0)} />
-              <StatCard label="Completion Rate" value={`${wallet?.completionRate ?? 0}%`} />
-              <StatCard label="Commission" value={`${wallet?.commissionRate ?? 0}%`} />
+            <div className="mt-8 grid grid-cols-4 gap-4 border-t border-white/20 pt-8">
+              <StatCard label="Accepted" value={String(acceptedRideCount)} />
+              <StatCard label="Completed" value={String(completedRideCount)} />
+              <StatCard label="Cancelled" value={String(cancelledRideCount)} />
+              <StatCard label="Accept Rate" value={`${acceptanceRate}%`} />
             </div>
           </div>
+
+          {(actionMessage || dispatchMessage) ? (
+            <div className="rounded-2xl border border-border bg-card p-5 text-sm font-medium text-muted-foreground shadow-sm">
+              {actionMessage ?? dispatchMessage}
+            </div>
+          ) : null}
 
           <div>
             <div className="mb-4 flex items-center justify-between">
@@ -518,10 +618,10 @@ export function DriverHomeDesktopPage({ user }: { user: SessionUser }) {
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
-                      <button type="button" className="h-11 rounded-xl border border-border font-bold">
+                      <button type="button" onClick={() => void handleRideAction(item.id, "reject")} disabled={isSyncing} className="h-11 rounded-xl border border-border font-bold disabled:opacity-60">
                         Reject
                       </button>
-                      <button type="button" className="h-11 rounded-xl bg-primary font-bold text-primary-foreground shadow-md">
+                      <button type="button" onClick={() => void handleRideAction(item.id, "accept")} disabled={isSyncing} className="h-11 rounded-xl bg-primary font-bold text-primary-foreground shadow-md disabled:opacity-60">
                         Accept
                       </button>
                     </div>
@@ -531,7 +631,7 @@ export function DriverHomeDesktopPage({ user }: { user: SessionUser }) {
             ) : (
               <DriverDesktopPlaceholder
                 title="No active requests"
-                description="Once drivers go online and passengers request trips, the live queue will appear here."
+                description={isKycApproved ? "When you are online, accept and decline request cards will appear here." : "Complete driver KYC before the dispatch queue can send you live requests."}
               />
             )}
           </div>
@@ -573,11 +673,11 @@ export function DriverHomeDesktopPage({ user }: { user: SessionUser }) {
                 </div>
               </div>
               <div className="flex gap-2">
-                <button type="button" className="rounded-xl border border-border px-4 py-2 font-bold">
-                  <Phone className="mr-2 inline h-4 w-4" /> Call
-                </button>
-                <button type="button" className="rounded-xl bg-primary px-5 py-2 font-bold text-primary-foreground shadow-md">
-                  Arrived
+                <Link href="/driver/messages/desktop" className="rounded-xl border border-border px-4 py-2 font-bold">
+                  <MessageSquare className="mr-2 inline h-4 w-4" /> Message
+                </Link>
+                <button type="button" onClick={() => void sendEmergencyIncident()} disabled={!request || isSendingSos} className="rounded-xl bg-destructive px-5 py-2 font-bold text-destructive-foreground shadow-md disabled:opacity-60">
+                  <AlertTriangle className="mr-2 inline h-4 w-4" /> {isSendingSos ? "Sending" : "SOS"}
                 </button>
               </div>
             </div>
@@ -585,6 +685,29 @@ export function DriverHomeDesktopPage({ user }: { user: SessionUser }) {
         </div>
 
         <div className="col-span-4 space-y-8">
+          <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+            <h3 className="mb-4 text-lg font-bold">Legal Verification</h3>
+            <div className={`rounded-2xl border p-4 ${isKycApproved ? "border-secondary/30 bg-secondary/10 text-secondary" : "border-amber-300/40 bg-amber-500/10 text-amber-700 dark:text-amber-200"}`}>
+              <div className="font-bold">{isKycApproved ? "Approved for dispatch" : "KYC required before rides"}</div>
+              <p className="mt-1 text-sm opacity-80">
+                Legal name, Ghana Card or license, vehicle insurance, and road-worthiness are reviewed by admin before a driver appears in dispatch.
+              </p>
+              <Link href="/driver/kyc/desktop" className="mt-3 inline-flex rounded-xl bg-background px-4 py-2 text-sm font-bold text-foreground">
+                Open KYC
+              </Link>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+            <h3 className="mb-4 text-lg font-bold">Messages & Notifications</h3>
+            <p className="text-sm text-muted-foreground">
+              Passenger chat threads appear in Messages after a ride is accepted. The bell is for operational notices and unread trip activity.
+            </p>
+            <Link href="/driver/messages/desktop" className="mt-4 inline-flex w-full justify-center rounded-xl bg-primary px-4 py-3 font-bold text-primary-foreground">
+              Open Messages
+            </Link>
+          </div>
+
           <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
             <h3 className="mb-6 text-lg font-bold">Wallet Snapshot</h3>
             <div className="space-y-3 text-sm">
@@ -642,9 +765,21 @@ export function DriverRidesDesktopPage({ user }: { user: SessionUser }) {
 
   const currentList = history[activeTab];
   const selectedTrip = currentList[selectedTripIndex] ?? currentList[0] ?? null;
+  const acceptedRideCount = history.upcoming.length + history.past.length;
+  const completedRideCount = history.past.length;
+  const cancelledRideCount = history.cancelled.length;
+  const totalRideDecisions = acceptedRideCount + cancelledRideCount;
+  const acceptanceRate = totalRideDecisions ? Math.round((acceptedRideCount / totalRideDecisions) * 100) : 0;
 
   return (
     <DriverDesktopShell user={user} title="Ride History" active="rides">
+      <div className="mb-6 grid grid-cols-4 gap-4">
+        <StatCard label="Accepted" value={String(acceptedRideCount)} />
+        <StatCard label="Completed" value={String(completedRideCount)} />
+        <StatCard label="Cancelled" value={String(cancelledRideCount)} />
+        <StatCard label="Accept Rate" value={`${acceptanceRate}%`} />
+      </div>
+
       <div className="grid min-h-[42rem] grid-cols-[minmax(0,1fr)_28rem] overflow-hidden rounded-xl border border-border bg-card shadow-sm">
         <div className="overflow-y-auto p-8">
           <div className="mb-8 flex items-center gap-4">

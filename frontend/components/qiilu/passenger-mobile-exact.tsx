@@ -9,6 +9,8 @@ import {
   Bell,
   Car,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   CreditCard,
   Home,
   Menu,
@@ -92,8 +94,8 @@ export function PassengerMobileExact({
   isResolvingPickupSuggestion?: boolean;
   isResolvingDestinationSuggestion?: boolean;
   onSwapRoute: () => void;
-  quickDestinations: string[];
-  onQuickDestination: (label: string) => void;
+  quickDestinations: Array<{ id: string; label: string }>;
+  onQuickDestination: (id: string) => void;
   onUseLivePickup: () => void;
   selectedVehicle: VehicleSummary | null;
   fareLabel: string;
@@ -109,9 +111,15 @@ export function PassengerMobileExact({
 }) {
   const safePickupSuggestions = pickupSuggestions ?? [];
   const safeDestinationSuggestions = destinationSuggestions ?? [];
+  const navItems = [
+    { href: "/passenger", icon: Home, label: "Home", active: step === "booking" },
+    { href: "/passenger/rides", icon: Car, label: "Rides", active: step !== "booking" },
+    { href: "/passenger/messages", icon: MessageSquare, label: "Messages", active: false, hasBadge: true },
+    { href: "/passenger/account", icon: User, label: "Account", active: false }
+  ];
 
   return (
-    <div className="isolate relative h-[100svh] min-h-[100svh] w-full overflow-hidden bg-background text-foreground font-sans sm:mx-auto sm:max-w-[430px] sm:rounded-[2rem] sm:border-8 sm:border-gray-900 sm:shadow-2xl">
+    <div className="isolate relative h-[100dvh] min-h-[100dvh] w-full overflow-hidden bg-background text-foreground font-sans sm:mx-auto sm:max-w-[430px] sm:rounded-[2rem] sm:border-8 sm:border-gray-900 sm:shadow-2xl">
       <div className="absolute inset-0 bg-[#e5e3df] dark:bg-[#1a1c1e] z-0 overflow-hidden">
         <div className="absolute inset-0 z-0">
           {mapNode}
@@ -125,7 +133,7 @@ export function PassengerMobileExact({
         ) : null}
       </div>
 
-      <div className="absolute top-0 left-0 w-full p-6 pt-12 z-[1100] flex justify-between items-center bg-gradient-to-b from-background/92 via-background/55 to-transparent">
+      <div className="absolute top-0 left-0 w-full p-6 pt-[calc(2rem+env(safe-area-inset-top))] z-[1100] flex justify-between items-center bg-gradient-to-b from-background/92 via-background/55 to-transparent">
         <div className="flex items-center gap-3">
           <button type="button" onClick={onToggleDrawer} className="w-10 h-10 rounded-full bg-background/88 shadow-md backdrop-blur-sm flex items-center justify-center cursor-pointer">
             <Menu className="w-5 h-5" />
@@ -145,12 +153,21 @@ export function PassengerMobileExact({
 
       <div className="absolute bottom-0 left-0 w-full z-[1100] flex flex-col justify-end pointer-events-none">
         {step === "booking" ? (
-          <div className={`bg-background/82 backdrop-blur-xl rounded-t-[2rem] border-t border-border/70 shadow-[0_-10px_40px_rgba(0,0,0,0.16)] transition-transform duration-300 pointer-events-auto ${drawerOpen ? "translate-y-0" : "translate-y-[60%]"}`}>
-            <div className="w-full flex justify-center pt-3 pb-2 cursor-pointer" onClick={onToggleDrawer}>
-              <div className="w-12 h-1.5 rounded-full bg-muted-foreground/20" />
-            </div>
+          <div className={`bg-background/88 backdrop-blur-xl rounded-t-[2rem] border-t border-border/70 shadow-[0_-10px_40px_rgba(0,0,0,0.16)] transition-transform duration-300 pointer-events-auto ${drawerOpen ? "translate-y-0" : "translate-y-[calc(100%-8.75rem)]"}`}>
+            <button type="button" className="w-full px-6 pt-3 pb-3 text-left" onClick={onToggleDrawer}>
+              <span className="mx-auto mb-2 block h-1.5 w-12 rounded-full bg-muted-foreground/25" />
+              <span className="flex items-center justify-between rounded-2xl border border-border/70 bg-background/70 px-4 py-3 text-sm font-bold shadow-sm">
+                <span>
+                  {drawerOpen ? "View map" : selectedVehicle ? `${selectedVehicle.label} - ${fareLabel}` : "Ride options"}
+                  <span className="mt-0.5 block text-xs font-medium text-muted-foreground">
+                    {drawerOpen ? "Collapse this panel after setting your route" : destination || "Tap to change your route"}
+                  </span>
+                </span>
+                {drawerOpen ? <ChevronDown className="h-5 w-5 text-muted-foreground" /> : <ChevronUp className="h-5 w-5 text-muted-foreground" />}
+              </span>
+            </button>
 
-            <div className="px-6 pb-24">
+            <div className="max-h-[calc(100dvh-12rem)] overflow-y-auto px-6 pb-[calc(6.5rem+env(safe-area-inset-bottom))]">
               <div className="mb-4">
                 <MobileInstallPrompt />
               </div>
@@ -209,18 +226,25 @@ export function PassengerMobileExact({
                 </button>
               </div>
 
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-[0.22em] text-muted-foreground">Suggested near you</span>
+                <button type="button" onClick={onToggleDrawer} className="rounded-full border border-border bg-background px-3 py-1 text-xs font-bold text-primary">
+                  View map
+                </button>
+              </div>
+
               <div className="flex gap-2 overflow-x-auto pb-2 mb-6">
                 <button type="button" onClick={onUseLivePickup} className="shrink-0 rounded-full border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary">
                   Current location
                 </button>
-                {quickDestinations.map((label) => (
+                {quickDestinations.map((location) => (
                   <button
-                    key={label}
+                    key={location.id}
                     type="button"
-                    onClick={() => onQuickDestination(label)}
-                    className={`shrink-0 rounded-full border px-4 py-2 text-sm font-semibold ${destination === label ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-muted-foreground"}`}
+                    onClick={() => onQuickDestination(location.id)}
+                    className={`shrink-0 rounded-full border px-4 py-2 text-sm font-semibold ${destination === location.label ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-muted-foreground"}`}
                   >
-                    {label}
+                    {location.label}
                   </button>
                 ))}
               </div>
@@ -279,12 +303,32 @@ export function PassengerMobileExact({
                 </div>
               ) : null}
 
-              <div className="flex gap-4">
-                <button type="button" onClick={() => onPaymentMethodChange("MOMO")} className={`flex items-center justify-center gap-2 w-1/3 h-14 rounded-2xl font-semibold border ${paymentMethod === "MOMO" ? "border-primary bg-primary/10 text-primary" : "bg-muted/50 border-border"}`}>
-                  <CreditCard className="w-5 h-5 text-primary" />
-                  <span>MoMo</span>
-                </button>
-                <Button onClick={onRequestRide} disabled={!canBook} className="w-2/3 h-14 rounded-2xl text-lg font-bold shadow-lg shadow-primary/25">
+              <div className="space-y-3">
+                <div>
+                  <div className="mb-2 text-xs font-bold uppercase tracking-[0.22em] text-muted-foreground">Payment method</div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button type="button" onClick={() => onPaymentMethodChange("MOMO")} className={`flex min-h-14 items-center gap-3 rounded-2xl border px-4 py-3 text-left ${paymentMethod === "MOMO" ? "border-primary bg-primary/10 text-primary" : "bg-muted/50 border-border"}`}>
+                      <CreditCard className="h-5 w-5 shrink-0 text-primary" />
+                      <span>
+                        <span className="block text-sm font-bold">MoMo Pay</span>
+                        <span className="block text-[11px] font-medium text-muted-foreground">mobile money approval</span>
+                      </span>
+                    </button>
+                    <button type="button" onClick={() => onPaymentMethodChange("CASH")} className={`flex min-h-14 items-center gap-3 rounded-2xl border px-4 py-3 text-left ${paymentMethod === "CASH" ? "border-primary bg-primary/10 text-primary" : "bg-muted/50 border-border"}`}>
+                      <CreditCard className="h-5 w-5 shrink-0 text-primary" />
+                      <span>
+                        <span className="block text-sm font-bold">Cash</span>
+                        <span className="block text-[11px] font-medium text-muted-foreground">pay driver directly</span>
+                      </span>
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {paymentMethod === "MOMO"
+                      ? "MoMo is for mobile money payment approval after the ride request."
+                      : "Cash keeps payment offline with the driver."}
+                  </p>
+                </div>
+                <Button onClick={onRequestRide} disabled={!canBook} className="h-14 w-full rounded-2xl text-lg font-bold shadow-lg shadow-primary/25">
                   Request {selectedVehicle?.label ?? "Qiilu Car"}
                 </Button>
               </div>
@@ -376,30 +420,36 @@ export function PassengerMobileExact({
                     Continue MoMo approval
                   </Button>
                 ) : null}
+                {onCancelRide ? (
+                  <Button
+                    variant="outline"
+                    className="mt-3 h-11 w-full rounded-xl border-destructive/30 text-destructive hover:bg-destructive/10"
+                    onClick={onCancelRide}
+                    disabled={isCancelling}
+                  >
+                    {isCancelling ? "Cancelling..." : "Cancel ride"}
+                  </Button>
+                ) : null}
               </div>
             </div>
           </div>
         ) : null}
 
-        <div className="absolute bottom-0 left-0 w-full h-20 border-t border-border bg-background/82 px-3 pb-4 pt-2 shadow-[0_-10px_30px_rgba(0,0,0,0.12)] backdrop-blur-xl pointer-events-auto">
-          <div className="grid h-full grid-cols-4 items-center">
-          <Link href="/passenger" className="flex min-w-0 flex-col items-center justify-center text-center text-primary">
-            <Home className="w-6 h-6 mb-1" />
-            <span className="block max-w-full text-[10px] font-semibold leading-none">Home</span>
-          </Link>
-          <Link href="/passenger/rides" className={`flex min-w-0 flex-col items-center justify-center text-center ${step === "booking" ? "text-muted-foreground hover:text-foreground" : "text-primary"}`}>
-            <Car className="w-6 h-6 mb-1" />
-            <span className="block max-w-full text-[10px] font-semibold leading-none">Rides</span>
-          </Link>
-          <Link href="/passenger/messages" className="relative flex min-w-0 flex-col items-center justify-center text-center text-muted-foreground hover:text-foreground">
-            <MessageSquare className="w-6 h-6 mb-1" />
-            <div className="absolute top-0 right-1 w-2.5 h-2.5 bg-primary rounded-full border-2 border-background" />
-            <span className="block max-w-full text-[10px] font-semibold leading-none">Messages</span>
-          </Link>
-          <Link href="/passenger/account" className="flex min-w-0 flex-col items-center justify-center text-center text-muted-foreground hover:text-foreground">
-            <User className="w-6 h-6 mb-1" />
-            <span className="block max-w-full text-[10px] font-semibold leading-none">Account</span>
-          </Link>
+        <div className="fixed bottom-0 left-0 right-0 z-[1200] mx-auto h-[calc(5rem+env(safe-area-inset-bottom))] w-full border-t border-border bg-background/90 px-3 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-10px_30px_rgba(0,0,0,0.12)] backdrop-blur-xl pointer-events-auto sm:max-w-[430px]">
+          <div className="grid h-full grid-cols-4 items-center gap-1">
+            {navItems.map(({ href, icon: Icon, label, active, hasBadge }) => (
+              <Link
+                key={href}
+                href={href}
+                className={`relative flex min-w-0 flex-col items-center justify-center rounded-2xl px-1 py-2 text-center transition-colors ${
+                  active ? "bg-primary/10 text-primary shadow-sm" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                }`}
+              >
+                <Icon className="mb-1 h-6 w-6" />
+                {hasBadge ? <div className="absolute right-3 top-2 h-2.5 w-2.5 rounded-full border-2 border-background bg-primary" /> : null}
+                <span className="block max-w-full text-[10px] font-semibold leading-none">{label}</span>
+              </Link>
+            ))}
           </div>
         </div>
       </div>

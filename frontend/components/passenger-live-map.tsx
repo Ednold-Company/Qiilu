@@ -123,6 +123,71 @@ async function geocodePreviewLocation(query: string) {
   };
 }
 
+async function fetchVisualRoadRoute(start: { lat: number; lng: number }, end: { lat: number; lng: number }) {
+  if (mapboxPublicToken) {
+    const endpoint = new URL(
+      `https://api.mapbox.com/directions/v5/mapbox/driving/${start.lng},${start.lat};${end.lng},${end.lat}`
+    );
+    endpoint.searchParams.set("access_token", mapboxPublicToken);
+    endpoint.searchParams.set("overview", "full");
+    endpoint.searchParams.set("geometries", "geojson");
+    endpoint.searchParams.set("alternatives", "false");
+    endpoint.searchParams.set("steps", "false");
+
+    const response = await fetch(endpoint.toString());
+
+    if (response.ok) {
+      const payload = (await response.json()) as {
+        routes?: Array<{
+          geometry?: { coordinates?: Array<[number, number]> };
+        }>;
+      };
+      const coordinates = payload.routes?.[0]?.geometry?.coordinates;
+
+      if (coordinates && coordinates.length > 2) {
+        return coordinates.map(([lng, lat]) => [lat, lng] as [number, number]);
+      }
+    }
+  }
+
+  const endpoint = new URL(
+    `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}`
+  );
+  endpoint.searchParams.set("overview", "full");
+  endpoint.searchParams.set("geometries", "geojson");
+
+  const response = await fetch(endpoint.toString());
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const payload = (await response.json()) as {
+    routes?: Array<{
+      geometry?: { coordinates?: Array<[number, number]> };
+    }>;
+  };
+  const coordinates = payload.routes?.[0]?.geometry?.coordinates;
+
+  return coordinates && coordinates.length > 2
+    ? coordinates.map(([lng, lat]) => [lat, lng] as [number, number])
+    : null;
+}
+
+function distanceMeters(start: { lat: number; lng: number }, end: { lat: number; lng: number }) {
+  const radiusMeters = 6371000;
+  const toRadians = (value: number) => (value * Math.PI) / 180;
+  const dLat = toRadians(end.lat - start.lat);
+  const dLng = toRadians(end.lng - start.lng);
+  const lat1 = toRadians(start.lat);
+  const lat2 = toRadians(end.lat);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+
+  return radiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 function getTileConfig(styleId?: string | null) {
   if (mapboxPublicToken && styleId) {
     return {
@@ -203,6 +268,7 @@ export default function PassengerLiveMap({
   const fallbackLocation = useMemo(() => getDefaultLocation(), []);
   const [previewPickupLocation, setPreviewPickupLocation] = useState<{ lat: number; lng: number; label: string } | null>(null);
   const [previewDestinationLocation, setPreviewDestinationLocation] = useState<{ lat: number; lng: number; label: string } | null>(null);
+  const [visualRoadRoute, setVisualRoadRoute] = useState<[number, number][] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -332,7 +398,42 @@ export default function PassengerLiveMap({
 
   const zoom = destinationLocation ? 13 : 15;
 
-  const path = route && route.length > 2 ? route : null;
+  const isPickupAtCurrentLocation = Boolean(
+    currentCoords &&
+      pickupLocation &&
+      (pickup?.trim().toLowerCase() === "current location" ||
+        distanceMeters(currentCoords, pickupLocation) < 35)
+  );
+  const shouldShowPickupMarker = Boolean(pickup?.trim() && !isPickupAtCurrentLocation);
+  const path = route && route.length > 2 ? route : visualRoadRoute;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if ((route && route.length > 2) || !destinationLocation) {
+      setVisualRoadRoute(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    fetchVisualRoadRoute(pickupLocation, destinationLocation)
+      .then((nextRoute) => {
+        if (!cancelled) {
+          setVisualRoadRoute(nextRoute);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setVisualRoadRoute(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [destinationLocation, pickupLocation, route]);
+
   useEffect(() => {
     setTileMode(mapboxPublicToken ? (allowCustomMapboxStyle ? "custom" : "defaultMapbox") : "osm");
     setTileWarning(null);
@@ -381,7 +482,12 @@ export default function PassengerLiveMap({
             tileerror: handleTileError
           }}
         />
-        {path ? <Polyline positions={path} pathOptions={{ color: "#111315", weight: 5, opacity: 0.75 }} /> : null}
+        {path ? (
+          <>
+            <Polyline positions={path} pathOptions={{ color: "#ffffff", weight: 9, opacity: 0.85 }} />
+            <Polyline positions={path} pathOptions={{ color: "#f97316", weight: 5, opacity: 0.95 }} />
+          </>
+        ) : null}
         <CircleMarker
           center={[currentCoords?.lat ?? pickupLocation.lat, currentCoords?.lng ?? pickupLocation.lng]}
           radius={22}
@@ -392,7 +498,7 @@ export default function PassengerLiveMap({
             You
           </Tooltip>
         </Marker>
-        {pickup?.trim() ? (
+        {shouldShowPickupMarker ? (
           <Marker position={[pickupLocation.lat, pickupLocation.lng]} icon={pickupIcon}>
           <Tooltip direction="top" offset={[0, -10]} permanent>
             Pickup

@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   ArrowLeft,
@@ -27,7 +26,6 @@ type SessionResponse = {
 };
 
 export default function LoginPage() {
-  const router = useRouter();
   const { isDark, toggleTheme, ready } = useTheme();
   const [showPassword, setShowPassword] = useState(false);
   const [phone, setPhone] = useState("");
@@ -67,13 +65,14 @@ export default function LoginPage() {
       });
 
       setSession(session);
-      router.push(
+      const nextPath =
         session.user.role === "ADMIN"
           ? "/admin"
           : session.user.role === "DRIVER"
             ? "/driver"
-            : "/passenger"
-      );
+            : "/passenger";
+
+      window.location.assign(nextPath);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Login failed.");
     } finally {

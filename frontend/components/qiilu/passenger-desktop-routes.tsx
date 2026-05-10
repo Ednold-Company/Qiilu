@@ -65,9 +65,21 @@ type MeResponse = {
     email?: string | null;
     profileImageUrl?: string | null;
     trustedContacts?: string[];
+    preferredPayment?: "MOMO" | "CASH" | null;
+    momoProvider?: string | null;
     kycStatus?: string | null;
   };
 };
+
+type PassengerExperience = {
+  preferredPayment: "MOMO" | "CASH";
+  momoProvider: string | null;
+  trustedContacts: string[];
+  lowBandwidthMode: boolean;
+  safetyShareEnabled: boolean;
+};
+
+const momoProviders = ["MTN MoMo", "Telecel Cash", "AirtelTigo Money"];
 
 type ShellProps = {
   user: SessionUser;
@@ -692,8 +704,20 @@ export function PassengerFavouritesDesktopPage({ user }: { user: SessionUser }) 
 
 export function PassengerPaymentsDesktopPage({ user }: { user: SessionUser }) {
   const [rides, setRides] = useState<RideItem[]>([]);
+  const [experience, setExperience] = useState<PassengerExperience | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<"MOMO" | "CASH">("MOMO");
+  const [momoProvider, setMomoProvider] = useState("MTN MoMo");
+  const [savingPayment, setSavingPayment] = useState(false);
+  const [paymentMessage, setPaymentMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    fetchJson<{ experience: PassengerExperience }>("/passenger/experience")
+      .then((payload) => {
+        setExperience(payload.experience);
+        setPaymentMethod(payload.experience.preferredPayment);
+        setMomoProvider(payload.experience.momoProvider ?? "MTN MoMo");
+      })
+      .catch(() => undefined);
     fetchJson<{ rides: RideItem[] }>("/passenger/rides")
       .then((payload) => setRides(payload.rides))
       .catch(() => setRides([]));
@@ -701,6 +725,29 @@ export function PassengerPaymentsDesktopPage({ user }: { user: SessionUser }) {
 
   const completed = rides.filter((ride) => ride.status === "COMPLETED");
   const walletBalance = completed.reduce((total, ride) => total + (ride.actualFareGhs ?? ride.estimatedFareGhs), 0);
+  const savePaymentMethod = async () => {
+    setSavingPayment(true);
+    setPaymentMessage(null);
+
+    try {
+      const payload = await fetchJson<{ experience: PassengerExperience }>("/passenger/experience", {
+        method: "PUT",
+        body: JSON.stringify({
+          preferredPayment: paymentMethod,
+          momoProvider,
+          trustedContacts: experience?.trustedContacts ?? [],
+          lowBandwidthMode: experience?.lowBandwidthMode ?? false,
+          safetyShareEnabled: experience?.safetyShareEnabled ?? true
+        })
+      });
+      setExperience(payload.experience);
+      setPaymentMessage("Payment preference saved. New ride requests will use this by default.");
+    } catch (error) {
+      setPaymentMessage(error instanceof Error ? error.message : "Could not save payment preference.");
+    } finally {
+      setSavingPayment(false);
+    }
+  };
 
   return (
     <PassengerDesktopShell user={user} title="Wallet & Payments" active="account">
@@ -729,31 +776,73 @@ export function PassengerPaymentsDesktopPage({ user }: { user: SessionUser }) {
           <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
             <h3 className="mb-6 text-xl font-bold">Payment Methods</h3>
             <div className="mb-6 space-y-4">
-              <div className="flex items-center justify-between rounded-xl border-2 border-primary bg-primary/5 p-4">
+              <button
+                type="button"
+                onClick={() => setPaymentMethod("MOMO")}
+                className={`flex w-full items-center justify-between rounded-xl border-2 bg-primary/5 p-4 text-left ${
+                  paymentMethod === "MOMO" ? "border-primary" : "border-border"
+                }`}
+              >
                 <div className="flex items-center gap-4">
                   <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
                     <CreditCard className="h-6 w-6" />
                   </div>
                   <div>
                     <h4 className="text-lg font-bold">Mobile Money</h4>
-                    <p className="text-sm text-muted-foreground">{user.phone}</p>
+                    <p className="text-sm text-muted-foreground">Passenger approves MoMo after requesting</p>
                   </div>
                 </div>
-                <div className="rounded bg-primary/20 px-3 py-1.5 text-xs font-bold uppercase text-primary">Primary</div>
-              </div>
-              <div className="flex items-center gap-4 rounded-xl border border-border p-4">
+                {paymentMethod === "MOMO" ? (
+                  <div className="rounded bg-primary/20 px-3 py-1.5 text-xs font-bold uppercase text-primary">Default</div>
+                ) : null}
+              </button>
+              {paymentMethod === "MOMO" ? (
+                <div className="rounded-xl border border-border bg-muted/20 p-4">
+                  <div className="mb-3 text-sm font-bold">MoMo network</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {momoProviders.map((provider) => (
+                      <button
+                        key={provider}
+                        type="button"
+                        onClick={() => setMomoProvider(provider)}
+                        className={`rounded-xl border px-3 py-3 text-sm font-bold ${
+                          momoProvider === provider ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-muted-foreground"
+                        }`}
+                      >
+                        {provider}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setPaymentMethod("CASH")}
+                className={`flex w-full items-center gap-4 rounded-xl border p-4 text-left ${
+                  paymentMethod === "CASH" ? "border-primary bg-primary/5" : "border-border"
+                }`}
+              >
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted">
                   <Wallet className="h-6 w-6" />
                 </div>
-                <h4 className="flex-1 text-lg font-bold">Cash</h4>
-              </div>
+                <div className="flex-1">
+                  <h4 className="text-lg font-bold">Cash</h4>
+                  <p className="text-sm text-muted-foreground">Pay the driver directly after the trip</p>
+                </div>
+                {paymentMethod === "CASH" ? (
+                  <div className="rounded bg-primary/20 px-3 py-1.5 text-xs font-bold uppercase text-primary">Default</div>
+                ) : null}
+              </button>
             </div>
             <button
               type="button"
-              className="flex h-14 w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border font-bold text-muted-foreground"
+              onClick={() => void savePaymentMethod()}
+              disabled={savingPayment}
+              className="flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-primary font-bold text-primary-foreground disabled:opacity-60"
             >
-              <Plus className="h-5 w-5" /> Add New Method
+              {savingPayment ? "Saving..." : "Save payment preference"}
             </button>
+            {paymentMessage ? <div className="mt-4 rounded-xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground">{paymentMessage}</div> : null}
           </div>
 
           <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">

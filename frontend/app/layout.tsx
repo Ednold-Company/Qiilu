@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import "leaflet/dist/leaflet.css";
 import { PwaRegister } from "@/components/pwa-register";
 import "./globals.css";
@@ -33,26 +32,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" data-theme="light" suppressHydrationWarning>
       <body suppressHydrationWarning>
         <PwaRegister />
-        <Script id="qiilu-theme-init" strategy="beforeInteractive">
-          {`
-            try {
-              const storageKey = "qiilu-theme";
-              const stored = window.localStorage.getItem(storageKey);
-              const mode = stored === "light" || stored === "dark"
-                ? stored
-                : (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-              document.documentElement.classList.toggle("dark", mode === "dark");
-              document.documentElement.dataset.theme = mode;
-              document.cookie = "qiilu-theme=" + mode + "; path=/; max-age=31536000; SameSite=Lax";
-            } catch (error) {
-              document.documentElement.classList.remove("dark");
-              document.documentElement.dataset.theme = "light";
-            }
-          `}
-        </Script>
         {children}
       </body>
     </html>
