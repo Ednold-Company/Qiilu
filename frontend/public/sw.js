@@ -1,9 +1,15 @@
-const CACHE_NAME = "qiilu-shell-v2";
-const APP_SHELL = ["/", "/login", "/signup", "/passenger", "/driver", "/offline", "/manifest.webmanifest"];
+const CACHE_NAME = "qiilu-pwa-v3";
+const PRECACHE_URLS = ["/offline"];
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS)).then(() => self.skipWaiting())
   );
 });
 
@@ -29,16 +35,21 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (url.pathname.startsWith("/_next/")) {
+  if (
+    url.pathname.startsWith("/_next/") ||
+    url.pathname === "/manifest.webmanifest" ||
+    url.pathname === "/icon" ||
+    url.pathname === "/apple-icon"
+  ) {
     event.respondWith(fetch(request));
     return;
   }
 
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request).catch(async () => {
+      fetch(request, { cache: "no-store" }).catch(async () => {
         const cache = await caches.open(CACHE_NAME);
-        return (await cache.match("/offline")) || (await cache.match("/"));
+        return (await cache.match("/offline")) || Response.error();
       })
     );
     return;
