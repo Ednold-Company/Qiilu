@@ -63,8 +63,10 @@ function UploadField({
   onSelect: (file: File) => void;
   disabled?: boolean;
 }) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
   return (
-    <label className="block">
+    <div className="block">
       <div className="mb-2 text-sm font-bold uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className="rounded-xl border border-dashed border-border bg-muted/30 p-4">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -72,25 +74,31 @@ function UploadField({
             <div className="text-sm font-semibold">{fileName ?? "No file selected yet"}</div>
             <div className="mt-1 text-xs text-muted-foreground">{helper}</div>
           </div>
-          <span className="inline-flex cursor-pointer items-center justify-center rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground">
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => inputRef.current?.click()}
+            className="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+          >
             Choose file
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf"
-              className="hidden"
-              disabled={disabled}
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) {
-                  onSelect(file);
-                }
-                event.currentTarget.value = "";
-              }}
-            />
-          </span>
+          </button>
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf"
+            className="sr-only"
+            disabled={disabled}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) {
+                onSelect(file);
+              }
+              event.currentTarget.value = "";
+            }}
+          />
         </div>
       </div>
-    </label>
+    </div>
   );
 }
 

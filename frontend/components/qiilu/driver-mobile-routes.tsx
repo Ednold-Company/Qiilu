@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -1151,6 +1151,7 @@ export function DriverAccountMobilePage({ sessionUser }: { sessionUser: SessionU
   const [submittingKyc, setSubmittingKyc] = useState(false);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [uploadingProfileImage, setUploadingProfileImage] = useState(false);
+  const kycDocumentInputRef = useRef<HTMLInputElement | null>(null);
 
   const loadAccount = async () => {
     const [mePayload, walletPayload, kycPayload] = await Promise.all([
@@ -1385,22 +1386,28 @@ export function DriverAccountMobilePage({ sessionUser }: { sessionUser: SessionU
                 <div className="rounded-xl border border-dashed border-border bg-muted/30 p-4">
                   <div className="text-sm font-semibold">{documentFileName ?? "No file selected yet"}</div>
                   <div className="mt-1 text-xs text-muted-foreground">Upload a PNG, JPG, WebP image, or PDF up to 5MB.</div>
-                  <label className="mt-3 inline-flex cursor-pointer rounded-full bg-primary px-4 py-2 text-xs font-bold text-primary-foreground">
+                  <button
+                    type="button"
+                    disabled={submittingKyc}
+                    onClick={() => kycDocumentInputRef.current?.click()}
+                    className="mt-3 inline-flex rounded-full bg-primary px-4 py-2 text-xs font-bold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                  >
                     Choose file
-                    <input
-                      type="file"
-                      accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf"
-                      className="hidden"
-                      disabled={submittingKyc}
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        if (file) {
-                          void uploadKycDocument(file);
-                        }
-                        event.currentTarget.value = "";
-                      }}
-                    />
-                  </label>
+                  </button>
+                  <input
+                    ref={kycDocumentInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf"
+                    className="sr-only"
+                    disabled={submittingKyc}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) {
+                        void uploadKycDocument(file);
+                      }
+                      event.currentTarget.value = "";
+                    }}
+                  />
                 </div>
               </label>
             </div>
