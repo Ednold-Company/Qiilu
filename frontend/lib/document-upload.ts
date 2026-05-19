@@ -1,14 +1,8 @@
 export async function readDocumentFileAsDataUrl(file: File) {
-  const allowedTypes = new Set([
-    "image/png",
-    "image/jpeg",
-    "image/jpg",
-    "image/webp",
-    "application/pdf"
-  ]);
+  const isSupportedDocument = file.type.startsWith("image/") || file.type === "application/pdf";
 
-  if (!allowedTypes.has(file.type)) {
-    throw new Error("Select a PNG, JPG, WebP image, or PDF document");
+  if (!isSupportedDocument) {
+    throw new Error("Select an image or PDF document");
   }
 
   if (file.size > 5_000_000) {

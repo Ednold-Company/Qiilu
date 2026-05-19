@@ -1442,7 +1442,7 @@ export function DriverAccountDesktopPage({ user }: { user: SessionUser }) {
                   <span className="text-sm font-bold text-muted-foreground">Uploaded Document</span>
                   <div className="rounded-xl border border-dashed border-border bg-muted/30 p-4">
                     <div className="text-sm font-semibold">{documentFileName ?? "No file selected yet"}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">Upload a PNG, JPG, WebP image, or PDF up to 5MB.</div>
+                    <div className="mt-1 text-xs text-muted-foreground">Upload an image or PDF up to 5MB.</div>
                     <button
                       type="button"
                       disabled={submittingKyc}
@@ -1454,7 +1454,7 @@ export function DriverAccountDesktopPage({ user }: { user: SessionUser }) {
                     <input
                       ref={kycDocumentInputRef}
                       type="file"
-                      accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf"
+                      accept="image/*,application/pdf"
                       className="sr-only"
                       disabled={submittingKyc}
                       onChange={(event) => {

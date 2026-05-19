@@ -85,7 +85,7 @@ function UploadField({
           <input
             ref={inputRef}
             type="file"
-            accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf"
+            accept="image/*,application/pdf"
             className="sr-only"
             disabled={disabled}
             onChange={(event) => {
@@ -204,17 +204,21 @@ function DriverKycContent({ user, compact }: { user: SessionUser; compact: boole
                 <button key={item} type="button" onClick={() => setDocumentType(item)} className={`rounded-full border-2 px-4 py-2 text-sm font-bold ${documentType === item ? "border-primary bg-primary/10 text-primary" : "border-border bg-muted/50 text-muted-foreground"}`}>{item.replaceAll("_", " ")}</button>
               ))}
             </div>
-            <div className="mb-6 grid gap-4 md:grid-cols-2">
-              {["Front of ID", "Back of ID"].map((label) => (
-                <div key={label} className="aspect-[4/3] rounded-2xl border-2 border-dashed border-border bg-muted/30 p-6 text-center">
-                  <UploadCloud className="mx-auto mb-4 h-10 w-10 text-muted-foreground" />
-                  <div className="font-bold text-muted-foreground">{label}</div>
-                </div>
-              ))}
+            <div className="mb-6 rounded-2xl border border-dashed border-border bg-muted/30 p-4">
+              <UploadCloud className="mb-4 h-10 w-10 text-muted-foreground" />
+              <UploadField
+                label="Document photo"
+                helper="Upload or take a clear photo of the selected document. Images and PDFs up to 5MB are accepted."
+                fileName={documentFileName}
+                onSelect={(file) => void handleDocumentSelect(file)}
+                disabled={submitting}
+              />
+              {documentUrl ? <div className="mt-3 rounded-xl bg-secondary/10 px-4 py-3 text-sm font-bold text-secondary">Document selected successfully. You can continue.</div> : null}
             </div>
+            {message ? <div className="mb-6 rounded-xl bg-muted/60 px-4 py-3 text-sm text-muted-foreground">{message}</div> : null}
             <div className="flex items-center justify-between">
               <button type="button" className="flex items-center text-muted-foreground" onClick={() => setStep(1)}><ChevronLeft className="mr-2 h-4 w-4" /> Back</button>
-              <button type="button" className="rounded-xl bg-primary px-8 py-3 font-bold text-primary-foreground" onClick={() => setStep(3)}>Continue</button>
+              <button type="button" disabled={!documentUrl} className="rounded-xl bg-primary px-8 py-3 font-bold text-primary-foreground disabled:opacity-60" onClick={() => setStep(3)}>Continue</button>
             </div>
           </div>
         ) : null}
@@ -223,13 +227,11 @@ function DriverKycContent({ user, compact }: { user: SessionUser; compact: boole
             <Field label="Document Number" value={documentNumber} onChange={setDocumentNumber} placeholder="GHA-DL-XXXXXXXX" />
             <Field label="Legal Name" value={legalName} onChange={setLegalName} placeholder="Name on document" />
             <Field label="Issuing Country" value={issuingCountry} onChange={setIssuingCountry} placeholder="Ghana" />
-            <UploadField
-              label="Uploaded Document"
-              helper="Upload a PNG, JPG, WebP image, or PDF up to 5MB."
-              fileName={documentFileName}
-              onSelect={(file) => void handleDocumentSelect(file)}
-              disabled={submitting}
-            />
+            <div className="rounded-xl bg-muted/30 p-4">
+              <div className="mb-2 text-sm font-bold uppercase tracking-wider text-muted-foreground">Uploaded Document</div>
+              <div className="text-sm font-medium">{documentFileName ?? "Document selected"}</div>
+              <button type="button" className="mt-3 text-sm font-bold text-primary" onClick={() => setStep(2)}>Change document</button>
+            </div>
             <label className="flex items-start gap-3 rounded-xl bg-muted/30 p-4"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} className="mt-1 h-5 w-5 rounded" /><span className="text-sm text-muted-foreground">I confirm these documents belong to me and the information is accurate.</span></label>
             {message ? <div className="rounded-xl bg-muted/60 px-4 py-3 text-sm text-muted-foreground">{message}</div> : null}
             <div className="flex items-center justify-between">
@@ -427,17 +429,21 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
                 <button key={item} type="button" onClick={() => setDocumentType(item)} className={`rounded-full border-2 px-4 py-2 text-sm font-bold ${documentType === item ? "border-primary bg-primary/10 text-primary" : "border-border bg-muted/50 text-muted-foreground"}`}>{item.replaceAll("_", " ")}</button>
               ))}
             </div>
-            <div className="mb-6 grid gap-4 md:grid-cols-2">
-              {["Front of ID", "Back of ID"].map((label) => (
-                <div key={label} className="aspect-[4/3] rounded-2xl border-2 border-dashed border-border bg-muted/30 p-6 text-center">
-                  <UploadCloud className="mx-auto mb-4 h-10 w-10 text-muted-foreground" />
-                  <div className="font-bold text-muted-foreground">{label}</div>
-                </div>
-              ))}
+            <div className="mb-6 rounded-2xl border border-dashed border-border bg-muted/30 p-4">
+              <UploadCloud className="mb-4 h-10 w-10 text-muted-foreground" />
+              <UploadField
+                label="Document photo"
+                helper="Upload or take a clear photo of the selected document. Images and PDFs up to 5MB are accepted."
+                fileName={documentFileName}
+                onSelect={(file) => void handleDocumentSelect(file)}
+                disabled={submitting}
+              />
+              {documentUrl ? <div className="mt-3 rounded-xl bg-secondary/10 px-4 py-3 text-sm font-bold text-secondary">Document selected successfully. Next, capture your selfie.</div> : null}
             </div>
+            {message ? <div className="mb-6 rounded-xl bg-muted/60 px-4 py-3 text-sm text-muted-foreground">{message}</div> : null}
             <div className="flex items-center justify-between">
               <button type="button" className="flex items-center text-muted-foreground" onClick={() => setStep(1)}><ChevronLeft className="mr-2 h-4 w-4" /> Back</button>
-              <button type="button" className="rounded-xl bg-primary px-8 py-3 font-bold text-primary-foreground" onClick={() => setStep(3)}>Continue</button>
+              <button type="button" disabled={!documentUrl} className="rounded-xl bg-primary px-8 py-3 font-bold text-primary-foreground disabled:opacity-60" onClick={() => setStep(3)}>Continue</button>
             </div>
           </div>
         ) : null}
@@ -504,7 +510,7 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
               <Field label="Document Number" value={documentNumber} onChange={setDocumentNumber} placeholder="GHA-XXXXXXXXX-X" />
               <UploadField
                 label="Uploaded Document"
-                helper="Upload a PNG, JPG, WebP image, or PDF up to 5MB."
+                helper="Upload an image or PDF up to 5MB."
                 fileName={documentFileName}
                 onSelect={(file) => void handleDocumentSelect(file)}
                 disabled={submitting}
