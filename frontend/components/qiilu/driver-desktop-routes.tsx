@@ -40,6 +40,8 @@ import { readImageFileAsDataUrl } from "@/lib/profile-image";
 import { useTheme } from "@/lib/theme";
 
 const PassengerLiveMap = dynamic(() => import("@/components/passenger-live-map"), { ssr: false });
+const WALLET_TOP_UP_MIN_GHS = 1;
+const WALLET_TOP_UP_MAX_GHS = 5000;
 
 type DriverRequestItem = {
   id: string;
@@ -1011,6 +1013,8 @@ export function DriverWalletDesktopPage({ user }: { user: SessionUser }) {
   const [toppingUp, setToppingUp] = useState(false);
   const [withdrawing, setWithdrawing] = useState(false);
   const [topUpAmount, setTopUpAmount] = useState("");
+  const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [withdrawAccountRef, setWithdrawAccountRef] = useState("");
 
   const loadWallet = async () => {
     const payload = await fetchJson<DriverWalletResponse>(`/driver/wallet/${user.id}`);
@@ -1023,8 +1027,8 @@ export function DriverWalletDesktopPage({ user }: { user: SessionUser }) {
 
   const topUp = async () => {
     const amountGhs = Number(topUpAmount);
-    if (!topUpAmount || Number.isNaN(amountGhs) || amountGhs <= 0) {
-      setWalletMessage("Enter a valid top-up amount.");
+    if (!topUpAmount || Number.isNaN(amountGhs) || amountGhs < WALLET_TOP_UP_MIN_GHS || amountGhs > WALLET_TOP_UP_MAX_GHS) {
+      setWalletMessage(`Top-up amount must be between GHS ${WALLET_TOP_UP_MIN_GHS} and GHS ${WALLET_TOP_UP_MAX_GHS.toLocaleString()}.`);
       return;
     }
 
@@ -1054,10 +1058,21 @@ export function DriverWalletDesktopPage({ user }: { user: SessionUser }) {
   };
 
   const withdraw = async () => {
-    const amount = window.prompt("Enter withdrawal amount in GHS");
-    const accountRef = window.prompt("Enter payout MoMo number");
-    const amountGhs = Number(amount);
-    if (!amount || Number.isNaN(amountGhs) || amountGhs <= 0 || !accountRef) return;
+    const amountGhs = Number(withdrawAmount);
+    if (!withdrawAmount || Number.isNaN(amountGhs) || amountGhs <= 0) {
+      setWalletMessage("Enter a valid withdrawal amount.");
+      return;
+    }
+
+    if (!withdrawAccountRef.trim()) {
+      setWalletMessage("Enter the MoMo number for cash-out.");
+      return;
+    }
+
+    if (wallet && amountGhs > wallet.wallet.totalBalanceGhs) {
+      setWalletMessage(`You can only withdraw up to GHS ${wallet.wallet.totalBalanceGhs.toFixed(2)} from this wallet.`);
+      return;
+    }
 
     setWithdrawing(true);
     setWalletMessage(null);
@@ -1065,9 +1080,10 @@ export function DriverWalletDesktopPage({ user }: { user: SessionUser }) {
     try {
       const payload = await fetchJson<{ message: string }>(`/driver/wallet/${user.id}/withdraw`, {
         method: "POST",
-        body: JSON.stringify({ amountGhs, provider: "MTN MoMo", accountRef })
+        body: JSON.stringify({ amountGhs, provider: "MTN MoMo", accountRef: withdrawAccountRef.trim() })
       });
       await loadWallet();
+      setWithdrawAmount("");
       setWalletMessage(payload.message ?? "Withdrawal request submitted.");
     } catch (error) {
       setWalletMessage(error instanceof Error ? error.message : "Could not request withdrawal.");
@@ -1091,6 +1107,8 @@ export function DriverWalletDesktopPage({ user }: { user: SessionUser }) {
     };
   });
   const maxChart = Math.max(...chartData.map((item) => item.total), 1);
+  const withdrawAmountGhs = Number(withdrawAmount);
+  const withdrawExceedsBalance = Boolean(withdrawAmount) && Number.isFinite(withdrawAmountGhs) && wallet ? withdrawAmountGhs > wallet.wallet.totalBalanceGhs : false;
 
   return (
     <DriverDesktopShell user={user} title="Earnings Wallet" active="wallet">
@@ -1131,7 +1149,8 @@ export function DriverWalletDesktopPage({ user }: { user: SessionUser }) {
                   onChange={(event) => setTopUpAmount(event.target.value)}
                   inputMode="decimal"
                   type="number"
-                  min="1"
+                  min={WALLET_TOP_UP_MIN_GHS}
+                  max={WALLET_TOP_UP_MAX_GHS}
                   placeholder="50.00"
                   className="w-32 bg-transparent text-sm font-bold outline-none placeholder:text-muted-foreground/60"
                 />
@@ -1139,10 +1158,37 @@ export function DriverWalletDesktopPage({ user }: { user: SessionUser }) {
               <button type="button" disabled={toppingUp || !topUpAmount} onClick={() => void topUp()} className="rounded-xl bg-primary px-5 py-3 font-bold text-primary-foreground disabled:opacity-60">
                 {toppingUp ? "Starting..." : "Top up balance"}
               </button>
-              <button type="button" disabled={withdrawing} onClick={() => void withdraw()} className="rounded-xl border border-border px-5 py-3 font-bold text-foreground disabled:opacity-60">
+              <label className="flex h-12 items-center gap-2 rounded-xl border border-border bg-muted/40 px-4">
+                <span className="text-sm font-bold text-muted-foreground">GHS</span>
+                <input
+                  value={withdrawAmount}
+                  onChange={(event) => setWithdrawAmount(event.target.value)}
+                  inputMode="decimal"
+                  type="number"
+                  min="1"
+                  placeholder="100.00"
+                  className="w-28 bg-transparent text-sm font-bold outline-none placeholder:text-muted-foreground/60"
+                />
+              </label>
+              <input
+                value={withdrawAccountRef}
+                onChange={(event) => setWithdrawAccountRef(event.target.value)}
+                inputMode="tel"
+                placeholder="MoMo number"
+                className="h-12 w-40 rounded-xl border border-border bg-muted/40 px-4 text-sm font-bold outline-none placeholder:text-muted-foreground/60"
+              />
+              <button type="button" disabled={withdrawing || !withdrawAmount || !withdrawAccountRef.trim() || withdrawExceedsBalance} onClick={() => void withdraw()} className="rounded-xl border border-border px-5 py-3 font-bold text-foreground disabled:opacity-60">
                 {withdrawing ? "Requesting..." : "Cash out"}
               </button>
             </div>
+            <div className="w-full text-xs font-medium text-muted-foreground">
+              Top-up limit: GHS {WALLET_TOP_UP_MIN_GHS} to GHS {WALLET_TOP_UP_MAX_GHS.toLocaleString()} per transaction.
+            </div>
+            {withdrawExceedsBalance ? (
+              <div className="w-full rounded-xl bg-destructive/10 px-4 py-3 text-sm font-bold text-destructive">
+                Withdrawal is higher than your available balance of GHS {wallet.wallet.totalBalanceGhs.toFixed(2)}.
+              </div>
+            ) : null}
             {walletMessage ? <div className="w-full rounded-xl bg-muted/50 px-4 py-3 text-sm text-muted-foreground">{walletMessage}</div> : null}
           </div>
 

@@ -105,6 +105,8 @@ type WalletActionResponse = {
 };
 
 const momoProviders = ["MTN MoMo", "Telecel Cash", "AirtelTigo Money"];
+const WALLET_TOP_UP_MIN_GHS = 1;
+const WALLET_TOP_UP_MAX_GHS = 5000;
 
 type ShellProps = {
   user: SessionUser;
@@ -763,8 +765,8 @@ export function PassengerPaymentsDesktopPage({ user }: { user: SessionUser }) {
   const topUpWallet = async () => {
     const amountGhs = Number(topUpAmount);
 
-    if (!topUpAmount || Number.isNaN(amountGhs) || amountGhs <= 0) {
-      setPaymentMessage("Enter a valid top-up amount.");
+    if (!topUpAmount || Number.isNaN(amountGhs) || amountGhs < WALLET_TOP_UP_MIN_GHS || amountGhs > WALLET_TOP_UP_MAX_GHS) {
+      setPaymentMessage(`Top-up amount must be between GHS ${WALLET_TOP_UP_MIN_GHS} and GHS ${WALLET_TOP_UP_MAX_GHS.toLocaleString()}.`);
       return;
     }
 
@@ -819,7 +821,7 @@ export function PassengerPaymentsDesktopPage({ user }: { user: SessionUser }) {
 
   return (
     <PassengerDesktopShell user={user} title="Wallet & Payments" active="account">
-      <div className="mb-8 flex items-center justify-between overflow-hidden rounded-[2rem] bg-gradient-to-br from-primary to-orange-600 p-10 text-white shadow-xl shadow-primary/20">
+      <div className="relative mb-8 flex items-center justify-between overflow-hidden rounded-[2rem] bg-gradient-to-br from-primary to-orange-600 p-10 text-white shadow-xl shadow-primary/20">
         <div>
           <div className="mb-2 flex items-center gap-2 text-lg font-medium text-white/80">
             <Wallet className="h-5 w-5" /> Current Balance
@@ -839,7 +841,8 @@ export function PassengerPaymentsDesktopPage({ user }: { user: SessionUser }) {
                 onChange={(event) => setTopUpAmount(event.target.value)}
                 inputMode="decimal"
                 type="number"
-                min="1"
+                min={WALLET_TOP_UP_MIN_GHS}
+                max={WALLET_TOP_UP_MAX_GHS}
                 placeholder="50.00"
                 className="w-full bg-transparent text-lg font-bold text-slate-950 outline-none placeholder:text-slate-400"
               />
@@ -851,6 +854,9 @@ export function PassengerPaymentsDesktopPage({ user }: { user: SessionUser }) {
           <button type="button" className="h-14 rounded-xl bg-white/20 px-8 text-lg font-bold text-white">
             <CreditCard className="mr-2 inline h-5 w-5" /> Cash
           </button>
+        </div>
+        <div className="absolute bottom-4 right-10 text-xs font-medium text-white/70">
+          Top-up limit: GHS {WALLET_TOP_UP_MIN_GHS} to GHS {WALLET_TOP_UP_MAX_GHS.toLocaleString()}
         </div>
       </div>
 

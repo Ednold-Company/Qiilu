@@ -113,6 +113,8 @@ type WalletActionResponse = {
 };
 
 const momoProviders = ["MTN MoMo", "Telecel Cash", "AirtelTigo Money"];
+const WALLET_TOP_UP_MIN_GHS = 1;
+const WALLET_TOP_UP_MAX_GHS = 5000;
 
 type MobileShellProps = {
   title: string;
@@ -515,8 +517,8 @@ export function PassengerPaymentsMobilePage() {
   const topUpWallet = async () => {
     const amountGhs = Number(topUpAmount);
 
-    if (!topUpAmount || Number.isNaN(amountGhs) || amountGhs <= 0) {
-      setPaymentMessage("Enter a valid top-up amount.");
+    if (!topUpAmount || Number.isNaN(amountGhs) || amountGhs < WALLET_TOP_UP_MIN_GHS || amountGhs > WALLET_TOP_UP_MAX_GHS) {
+      setPaymentMessage(`Top-up amount must be between GHS ${WALLET_TOP_UP_MIN_GHS} and GHS ${WALLET_TOP_UP_MAX_GHS.toLocaleString()}.`);
       return;
     }
 
@@ -589,7 +591,8 @@ export function PassengerPaymentsMobilePage() {
               onChange={(event) => setTopUpAmount(event.target.value)}
               inputMode="decimal"
               type="number"
-              min="1"
+              min={WALLET_TOP_UP_MIN_GHS}
+              max={WALLET_TOP_UP_MAX_GHS}
               placeholder="50.00"
               className="h-12 w-full bg-transparent text-base font-bold text-slate-950 outline-none placeholder:text-slate-400"
             />
@@ -598,6 +601,9 @@ export function PassengerPaymentsMobilePage() {
         <button type="button" disabled={toppingUp || !topUpAmount} onClick={() => void topUpWallet()} className="relative z-10 mb-4 h-12 w-full rounded-xl bg-white font-bold text-primary disabled:opacity-60">
           {toppingUp ? "Starting top-up..." : "Top up balance"}
         </button>
+        <div className="relative z-10 mb-4 text-xs font-medium text-white/70">
+          Limit: GHS {WALLET_TOP_UP_MIN_GHS} to GHS {WALLET_TOP_UP_MAX_GHS.toLocaleString()} per top-up.
+        </div>
         <div className="relative z-10 grid grid-cols-2 gap-3">
           <div className="rounded-xl bg-white/20 p-4">
             <div className="text-xs font-medium text-white/70">Preferred</div>

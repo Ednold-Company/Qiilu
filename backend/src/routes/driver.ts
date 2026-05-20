@@ -2,7 +2,7 @@ import { Router } from "express";
 import type { AuthenticatedRequest } from "../middleware/auth.js";
 import { requireAuth } from "../middleware/auth.js";
 import { autoAssignRide, releaseDriverFromRide, syncDriverAvailability } from "../lib/dispatch.js";
-import { requestDriverPayout, topUpDriverWallet } from "../lib/payments.js";
+import { requestDriverPayout, topUpDriverWallet, WALLET_TOP_UP_MAX_GHS, WALLET_TOP_UP_MIN_GHS } from "../lib/payments.js";
 import { prisma } from "../lib/prisma.js";
 import { realtimeGateway } from "../lib/realtime.js";
 import {
@@ -414,6 +414,11 @@ driverRouter.post("/wallet/:userId/top-up", requireAuth, async (request: Authent
 
   if (!body.amountGhs || body.amountGhs <= 0) {
     response.status(400).json({ message: "A valid amount is required" });
+    return;
+  }
+
+  if (body.amountGhs < WALLET_TOP_UP_MIN_GHS || body.amountGhs > WALLET_TOP_UP_MAX_GHS) {
+    response.status(400).json({ message: `Top-up amount must be between GHS ${WALLET_TOP_UP_MIN_GHS} and GHS ${WALLET_TOP_UP_MAX_GHS.toLocaleString()}` });
     return;
   }
 

@@ -37,6 +37,8 @@ type PaystackWebhookEvent = {
 };
 
 const PAYSTACK_PROVIDER = "Paystack";
+export const WALLET_TOP_UP_MIN_GHS = 1;
+export const WALLET_TOP_UP_MAX_GHS = 5000;
 
 function createReference(prefix: string) {
   return `${prefix}-${crypto.randomBytes(5).toString("hex").toUpperCase()}`;
@@ -303,6 +305,14 @@ export async function topUpWallet(input: {
   provider: string;
   callbackPath?: string;
 }) {
+  if (!Number.isFinite(input.amountGhs) || input.amountGhs < WALLET_TOP_UP_MIN_GHS) {
+    throw new Error(`Top-up amount must be at least GHS ${WALLET_TOP_UP_MIN_GHS}`);
+  }
+
+  if (input.amountGhs > WALLET_TOP_UP_MAX_GHS) {
+    throw new Error(`Top-up limit is GHS ${WALLET_TOP_UP_MAX_GHS.toLocaleString()} per transaction`);
+  }
+
   let wallet = await prisma.wallet.findUnique({
     where: { userId: input.userId },
     include: {
@@ -429,7 +439,7 @@ export async function requestDriverPayout(input: {
   }
 
   if (wallet.balanceGhs < input.amountGhs) {
-    throw new Error("Insufficient balance");
+    throw new Error(`Insufficient balance. Available balance is GHS ${wallet.balanceGhs.toFixed(2)}`);
   }
 
   let providerResult: ProviderResult | null = null;
