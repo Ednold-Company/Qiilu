@@ -876,6 +876,7 @@ export function DriverWalletMobilePage({ userId }: { userId: string }) {
   const [walletMessage, setWalletMessage] = useState<string | null>(null);
   const [toppingUp, setToppingUp] = useState(false);
   const [withdrawing, setWithdrawing] = useState(false);
+  const [topUpAmount, setTopUpAmount] = useState("");
 
   const load = async () => {
     try {
@@ -891,9 +892,11 @@ export function DriverWalletMobilePage({ userId }: { userId: string }) {
   }, [userId]);
 
   const topUp = async () => {
-    const amount = window.prompt("Enter top up amount in GHS");
-    const amountGhs = Number(amount);
-    if (!amount || Number.isNaN(amountGhs) || amountGhs <= 0) return;
+    const amountGhs = Number(topUpAmount);
+    if (!topUpAmount || Number.isNaN(amountGhs) || amountGhs <= 0) {
+      setWalletMessage("Enter a valid top-up amount.");
+      return;
+    }
 
     setToppingUp(true);
     setWalletMessage(null);
@@ -911,6 +914,7 @@ export function DriverWalletMobilePage({ userId }: { userId: string }) {
       }
 
       await load();
+      setTopUpAmount("");
       setWalletMessage(payload.message ?? "Wallet top-up processed.");
     } catch (error) {
       setWalletMessage(error instanceof Error ? error.message : "Could not top up wallet.");
@@ -984,10 +988,25 @@ export function DriverWalletMobilePage({ userId }: { userId: string }) {
               >
                 {withdrawing ? "Requesting..." : "Cash Out Now"}
               </button>
+              <div className="mt-3 rounded-2xl bg-white/15 p-3">
+                <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-white/70">Top-up amount</label>
+                <div className="flex items-center gap-2 rounded-xl bg-white px-4">
+                  <span className="text-sm font-bold text-secondary">GHS</span>
+                  <input
+                    value={topUpAmount}
+                    onChange={(event) => setTopUpAmount(event.target.value)}
+                    inputMode="decimal"
+                    type="number"
+                    min="1"
+                    placeholder="50.00"
+                    className="h-12 w-full bg-transparent text-base font-bold text-slate-950 outline-none placeholder:text-slate-400"
+                  />
+                </div>
+              </div>
               <button
                 onClick={() => void topUp()}
-                disabled={toppingUp}
-                className="mt-3 h-12 w-full rounded-xl bg-white/20 font-bold text-white"
+                disabled={toppingUp || !topUpAmount}
+                className="mt-3 h-12 w-full rounded-xl bg-white/20 font-bold text-white disabled:opacity-60"
                 type="button"
               >
                 {toppingUp ? "Starting top-up..." : "Top up balance"}

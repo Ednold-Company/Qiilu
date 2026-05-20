@@ -1010,6 +1010,7 @@ export function DriverWalletDesktopPage({ user }: { user: SessionUser }) {
   const [walletMessage, setWalletMessage] = useState<string | null>(null);
   const [toppingUp, setToppingUp] = useState(false);
   const [withdrawing, setWithdrawing] = useState(false);
+  const [topUpAmount, setTopUpAmount] = useState("");
 
   const loadWallet = async () => {
     const payload = await fetchJson<DriverWalletResponse>(`/driver/wallet/${user.id}`);
@@ -1021,9 +1022,11 @@ export function DriverWalletDesktopPage({ user }: { user: SessionUser }) {
   }, [user.id]);
 
   const topUp = async () => {
-    const amount = window.prompt("Enter top up amount in GHS");
-    const amountGhs = Number(amount);
-    if (!amount || Number.isNaN(amountGhs) || amountGhs <= 0) return;
+    const amountGhs = Number(topUpAmount);
+    if (!topUpAmount || Number.isNaN(amountGhs) || amountGhs <= 0) {
+      setWalletMessage("Enter a valid top-up amount.");
+      return;
+    }
 
     setToppingUp(true);
     setWalletMessage(null);
@@ -1041,6 +1044,7 @@ export function DriverWalletDesktopPage({ user }: { user: SessionUser }) {
       }
 
       await loadWallet();
+      setTopUpAmount("");
       setWalletMessage(payload.message ?? "Wallet top-up processed.");
     } catch (error) {
       setWalletMessage(error instanceof Error ? error.message : "Could not top up wallet.");
@@ -1120,7 +1124,19 @@ export function DriverWalletDesktopPage({ user }: { user: SessionUser }) {
               <div className="mt-1 text-sm text-muted-foreground">Top up your balance or request a MoMo cash-out from this wallet.</div>
             </div>
             <div className="flex flex-wrap gap-3">
-              <button type="button" disabled={toppingUp} onClick={() => void topUp()} className="rounded-xl bg-primary px-5 py-3 font-bold text-primary-foreground disabled:opacity-60">
+              <label className="flex h-12 items-center gap-2 rounded-xl border border-border bg-muted/40 px-4">
+                <span className="text-sm font-bold text-muted-foreground">GHS</span>
+                <input
+                  value={topUpAmount}
+                  onChange={(event) => setTopUpAmount(event.target.value)}
+                  inputMode="decimal"
+                  type="number"
+                  min="1"
+                  placeholder="50.00"
+                  className="w-32 bg-transparent text-sm font-bold outline-none placeholder:text-muted-foreground/60"
+                />
+              </label>
+              <button type="button" disabled={toppingUp || !topUpAmount} onClick={() => void topUp()} className="rounded-xl bg-primary px-5 py-3 font-bold text-primary-foreground disabled:opacity-60">
                 {toppingUp ? "Starting..." : "Top up balance"}
               </button>
               <button type="button" disabled={withdrawing} onClick={() => void withdraw()} className="rounded-xl border border-border px-5 py-3 font-bold text-foreground disabled:opacity-60">

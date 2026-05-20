@@ -735,6 +735,7 @@ export function PassengerPaymentsDesktopPage({ user }: { user: SessionUser }) {
   const [momoProvider, setMomoProvider] = useState("MTN MoMo");
   const [savingPayment, setSavingPayment] = useState(false);
   const [toppingUp, setToppingUp] = useState(false);
+  const [topUpAmount, setTopUpAmount] = useState("");
   const [paymentMessage, setPaymentMessage] = useState<string | null>(null);
 
   const loadWallet = async () => {
@@ -760,10 +761,10 @@ export function PassengerPaymentsDesktopPage({ user }: { user: SessionUser }) {
   const walletBalance = wallet?.wallet.totalBalanceGhs ?? 0;
 
   const topUpWallet = async () => {
-    const amount = window.prompt("Enter top-up amount in GHS");
-    const amountGhs = Number(amount);
+    const amountGhs = Number(topUpAmount);
 
-    if (!amount || Number.isNaN(amountGhs) || amountGhs <= 0) {
+    if (!topUpAmount || Number.isNaN(amountGhs) || amountGhs <= 0) {
+      setPaymentMessage("Enter a valid top-up amount.");
       return;
     }
 
@@ -783,6 +784,7 @@ export function PassengerPaymentsDesktopPage({ user }: { user: SessionUser }) {
       }
 
       await loadWallet();
+      setTopUpAmount("");
       setPaymentMessage(payload.message ?? "Wallet top-up processed.");
     } catch (error) {
       setPaymentMessage(error instanceof Error ? error.message : "Could not top up wallet.");
@@ -827,8 +829,23 @@ export function PassengerPaymentsDesktopPage({ user }: { user: SessionUser }) {
             {walletBalance.toFixed(2)}
           </div>
         </div>
-        <div className="flex gap-4">
-          <button type="button" disabled={toppingUp} onClick={() => void topUpWallet()} className="h-14 rounded-xl bg-white px-8 text-lg font-bold text-primary disabled:opacity-60">
+        <div className="flex items-end gap-4">
+          <label className="block rounded-2xl bg-white/15 p-3">
+            <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-white/70">Top-up amount</span>
+            <div className="flex h-14 min-w-48 items-center gap-2 rounded-xl bg-white px-4">
+              <span className="text-sm font-bold text-primary">GHS</span>
+              <input
+                value={topUpAmount}
+                onChange={(event) => setTopUpAmount(event.target.value)}
+                inputMode="decimal"
+                type="number"
+                min="1"
+                placeholder="50.00"
+                className="w-full bg-transparent text-lg font-bold text-slate-950 outline-none placeholder:text-slate-400"
+              />
+            </div>
+          </label>
+          <button type="button" disabled={toppingUp || !topUpAmount} onClick={() => void topUpWallet()} className="h-14 rounded-xl bg-white px-8 text-lg font-bold text-primary disabled:opacity-60">
             <ArrowDownRight className="mr-2 inline h-5 w-5" /> {toppingUp ? "Starting..." : "Top Up"}
           </button>
           <button type="button" className="h-14 rounded-xl bg-white/20 px-8 text-lg font-bold text-white">
