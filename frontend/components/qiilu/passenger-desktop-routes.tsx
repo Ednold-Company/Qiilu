@@ -79,6 +79,31 @@ type PassengerExperience = {
   safetyShareEnabled: boolean;
 };
 
+type PassengerWalletResponse = {
+  wallet: {
+    totalBalanceGhs: number;
+    cashGhs: number;
+    momoGhs: number;
+    pendingWithdrawalGhs: number;
+  };
+  transactions: Array<{
+    id: string;
+    kind: string;
+    amountGhs: number;
+    channel: string;
+    createdAt: string;
+  }>;
+};
+
+type WalletActionResponse = {
+  message: string;
+  result?: {
+    status?: string;
+    authorizationUrl?: string | null;
+    message?: string;
+  };
+};
+
 const momoProviders = ["MTN MoMo", "Telecel Cash", "AirtelTigo Money"];
 
 type ShellProps = {
@@ -704,11 +729,18 @@ export function PassengerFavouritesDesktopPage({ user }: { user: SessionUser }) 
 
 export function PassengerPaymentsDesktopPage({ user }: { user: SessionUser }) {
   const [rides, setRides] = useState<RideItem[]>([]);
+  const [wallet, setWallet] = useState<PassengerWalletResponse | null>(null);
   const [experience, setExperience] = useState<PassengerExperience | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<"MOMO" | "CASH">("MOMO");
   const [momoProvider, setMomoProvider] = useState("MTN MoMo");
   const [savingPayment, setSavingPayment] = useState(false);
+  const [toppingUp, setToppingUp] = useState(false);
   const [paymentMessage, setPaymentMessage] = useState<string | null>(null);
+
+  const loadWallet = async () => {
+    const payload = await fetchJson<PassengerWalletResponse>("/passenger/wallet");
+    setWallet(payload);
+  };
 
   useEffect(() => {
     fetchJson<{ experience: PassengerExperience }>("/passenger/experience")
@@ -721,10 +753,44 @@ export function PassengerPaymentsDesktopPage({ user }: { user: SessionUser }) {
     fetchJson<{ rides: RideItem[] }>("/passenger/rides")
       .then((payload) => setRides(payload.rides))
       .catch(() => setRides([]));
+    loadWallet().catch(() => setWallet(null));
   }, []);
 
   const completed = rides.filter((ride) => ride.status === "COMPLETED");
-  const walletBalance = completed.reduce((total, ride) => total + (ride.actualFareGhs ?? ride.estimatedFareGhs), 0);
+  const walletBalance = wallet?.wallet.totalBalanceGhs ?? 0;
+
+  const topUpWallet = async () => {
+    const amount = window.prompt("Enter top-up amount in GHS");
+    const amountGhs = Number(amount);
+
+    if (!amount || Number.isNaN(amountGhs) || amountGhs <= 0) {
+      return;
+    }
+
+    setToppingUp(true);
+    setPaymentMessage(null);
+
+    try {
+      const payload = await fetchJson<WalletActionResponse>("/passenger/wallet/top-up", {
+        method: "POST",
+        body: JSON.stringify({ amountGhs, provider: momoProvider })
+      });
+
+      if (payload.result?.authorizationUrl) {
+        setPaymentMessage(payload.message);
+        window.location.assign(payload.result.authorizationUrl);
+        return;
+      }
+
+      await loadWallet();
+      setPaymentMessage(payload.message ?? "Wallet top-up processed.");
+    } catch (error) {
+      setPaymentMessage(error instanceof Error ? error.message : "Could not top up wallet.");
+    } finally {
+      setToppingUp(false);
+    }
+  };
+
   const savePaymentMethod = async () => {
     setSavingPayment(true);
     setPaymentMessage(null);
@@ -762,8 +828,8 @@ export function PassengerPaymentsDesktopPage({ user }: { user: SessionUser }) {
           </div>
         </div>
         <div className="flex gap-4">
-          <button type="button" className="h-14 rounded-xl bg-white px-8 text-lg font-bold text-primary">
-            <ArrowDownRight className="mr-2 inline h-5 w-5" /> Top Up
+          <button type="button" disabled={toppingUp} onClick={() => void topUpWallet()} className="h-14 rounded-xl bg-white px-8 text-lg font-bold text-primary disabled:opacity-60">
+            <ArrowDownRight className="mr-2 inline h-5 w-5" /> {toppingUp ? "Starting..." : "Top Up"}
           </button>
           <button type="button" className="h-14 rounded-xl bg-white/20 px-8 text-lg font-bold text-white">
             <CreditCard className="mr-2 inline h-5 w-5" /> Cash

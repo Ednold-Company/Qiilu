@@ -420,7 +420,8 @@ driverRouter.post("/wallet/:userId/top-up", requireAuth, async (request: Authent
   const result = await topUpDriverWallet({
     userId: request.params.userId,
     amountGhs: body.amountGhs,
-    provider: body.provider?.trim() || "MTN MoMo"
+    provider: body.provider?.trim() || "MTN MoMo",
+    callbackPath: "/driver/wallet?payment=paystack"
   });
 
   response.json({

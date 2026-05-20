@@ -83,6 +83,15 @@ type DriverWalletResponse = {
   }>;
 };
 
+type WalletActionResponse = {
+  message: string;
+  result?: {
+    status?: string;
+    authorizationUrl?: string | null;
+    message?: string;
+  };
+};
+
 type DriverHistoryResponse = {
   upcoming: Array<{ route: string; time: string; rider: string; gross: number; net: number }>;
   past: Array<{ route: string; time: string; rider: string; gross: number; net: number }>;
@@ -998,12 +1007,70 @@ function DriverWalletDesktopPageLegacy({ user }: { user: SessionUser }) {
 
 export function DriverWalletDesktopPage({ user }: { user: SessionUser }) {
   const [wallet, setWallet] = useState<DriverWalletResponse | null>(null);
+  const [walletMessage, setWalletMessage] = useState<string | null>(null);
+  const [toppingUp, setToppingUp] = useState(false);
+  const [withdrawing, setWithdrawing] = useState(false);
+
+  const loadWallet = async () => {
+    const payload = await fetchJson<DriverWalletResponse>(`/driver/wallet/${user.id}`);
+    setWallet(payload);
+  };
 
   useEffect(() => {
-    fetchJson<DriverWalletResponse>(`/driver/wallet/${user.id}`)
-      .then((payload) => setWallet(payload))
-      .catch(() => setWallet(null));
+    loadWallet().catch(() => setWallet(null));
   }, [user.id]);
+
+  const topUp = async () => {
+    const amount = window.prompt("Enter top up amount in GHS");
+    const amountGhs = Number(amount);
+    if (!amount || Number.isNaN(amountGhs) || amountGhs <= 0) return;
+
+    setToppingUp(true);
+    setWalletMessage(null);
+
+    try {
+      const payload = await fetchJson<WalletActionResponse>(`/driver/wallet/${user.id}/top-up`, {
+        method: "POST",
+        body: JSON.stringify({ amountGhs, provider: "MTN MoMo" })
+      });
+
+      if (payload.result?.authorizationUrl) {
+        setWalletMessage(payload.message);
+        window.location.assign(payload.result.authorizationUrl);
+        return;
+      }
+
+      await loadWallet();
+      setWalletMessage(payload.message ?? "Wallet top-up processed.");
+    } catch (error) {
+      setWalletMessage(error instanceof Error ? error.message : "Could not top up wallet.");
+    } finally {
+      setToppingUp(false);
+    }
+  };
+
+  const withdraw = async () => {
+    const amount = window.prompt("Enter withdrawal amount in GHS");
+    const accountRef = window.prompt("Enter payout MoMo number");
+    const amountGhs = Number(amount);
+    if (!amount || Number.isNaN(amountGhs) || amountGhs <= 0 || !accountRef) return;
+
+    setWithdrawing(true);
+    setWalletMessage(null);
+
+    try {
+      const payload = await fetchJson<{ message: string }>(`/driver/wallet/${user.id}/withdraw`, {
+        method: "POST",
+        body: JSON.stringify({ amountGhs, provider: "MTN MoMo", accountRef })
+      });
+      await loadWallet();
+      setWalletMessage(payload.message ?? "Withdrawal request submitted.");
+    } catch (error) {
+      setWalletMessage(error instanceof Error ? error.message : "Could not request withdrawal.");
+    } finally {
+      setWithdrawing(false);
+    }
+  };
 
   const chartData = Array.from({ length: 7 }, (_, index) => {
     const target = new Date();
@@ -1045,6 +1112,22 @@ export function DriverWalletDesktopPage({ user }: { user: SessionUser }) {
               <div className="text-4xl font-extrabold tracking-tight">GHS {wallet.wallet.pendingWithdrawalGhs.toFixed(2)}</div>
               <div className="mt-4 text-sm font-bold text-secondary">Commission {wallet.wallet.commissionRate}%</div>
             </div>
+          </div>
+
+          <div className="col-span-12 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border bg-card p-5 shadow-sm">
+            <div>
+              <div className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Wallet actions</div>
+              <div className="mt-1 text-sm text-muted-foreground">Top up your balance or request a MoMo cash-out from this wallet.</div>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <button type="button" disabled={toppingUp} onClick={() => void topUp()} className="rounded-xl bg-primary px-5 py-3 font-bold text-primary-foreground disabled:opacity-60">
+                {toppingUp ? "Starting..." : "Top up balance"}
+              </button>
+              <button type="button" disabled={withdrawing} onClick={() => void withdraw()} className="rounded-xl border border-border px-5 py-3 font-bold text-foreground disabled:opacity-60">
+                {withdrawing ? "Requesting..." : "Cash out"}
+              </button>
+            </div>
+            {walletMessage ? <div className="w-full rounded-xl bg-muted/50 px-4 py-3 text-sm text-muted-foreground">{walletMessage}</div> : null}
           </div>
 
           <div className="col-span-8 space-y-8">

@@ -87,6 +87,31 @@ type PassengerExperience = {
   safetyShareEnabled: boolean;
 };
 
+type PassengerWalletResponse = {
+  wallet: {
+    totalBalanceGhs: number;
+    cashGhs: number;
+    momoGhs: number;
+    pendingWithdrawalGhs: number;
+  };
+  transactions: Array<{
+    id: string;
+    kind: string;
+    amountGhs: number;
+    channel: string;
+    createdAt: string;
+  }>;
+};
+
+type WalletActionResponse = {
+  message: string;
+  result?: {
+    status?: string;
+    authorizationUrl?: string | null;
+    message?: string;
+  };
+};
+
 const momoProviders = ["MTN MoMo", "Telecel Cash", "AirtelTigo Money"];
 
 type MobileShellProps = {
@@ -456,11 +481,18 @@ export function PassengerFavouritesMobilePage() {
 
 export function PassengerPaymentsMobilePage() {
   const [rides, setRides] = useState<RideItem[]>([]);
+  const [wallet, setWallet] = useState<PassengerWalletResponse | null>(null);
   const [experience, setExperience] = useState<PassengerExperience | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<"MOMO" | "CASH">("MOMO");
   const [momoProvider, setMomoProvider] = useState("MTN MoMo");
   const [savingPayment, setSavingPayment] = useState(false);
+  const [toppingUp, setToppingUp] = useState(false);
   const [paymentMessage, setPaymentMessage] = useState<string | null>(null);
+
+  const loadWallet = async () => {
+    const payload = await fetchJson<PassengerWalletResponse>("/passenger/wallet");
+    setWallet(payload);
+  };
 
   useEffect(() => {
     fetchJson<{ experience: PassengerExperience }>("/passenger/experience")
@@ -473,9 +505,44 @@ export function PassengerPaymentsMobilePage() {
     fetchJson<{ rides: RideItem[] }>("/passenger/rides")
       .then((payload) => setRides(payload.rides))
       .catch(() => setRides([]));
+    loadWallet().catch(() => setWallet(null));
   }, []);
 
   const spent = rides.reduce((total, ride) => total + (ride.actualFareGhs ?? ride.estimatedFareGhs), 0);
+  const walletBalance = wallet?.wallet.totalBalanceGhs ?? 0;
+
+  const topUpWallet = async () => {
+    const amount = window.prompt("Enter top-up amount in GHS");
+    const amountGhs = Number(amount);
+
+    if (!amount || Number.isNaN(amountGhs) || amountGhs <= 0) {
+      return;
+    }
+
+    setToppingUp(true);
+    setPaymentMessage(null);
+
+    try {
+      const payload = await fetchJson<WalletActionResponse>("/passenger/wallet/top-up", {
+        method: "POST",
+        body: JSON.stringify({ amountGhs, provider: momoProvider })
+      });
+
+      if (payload.result?.authorizationUrl) {
+        setPaymentMessage(payload.message);
+        window.location.assign(payload.result.authorizationUrl);
+        return;
+      }
+
+      await loadWallet();
+      setPaymentMessage(payload.message ?? "Wallet top-up processed.");
+    } catch (error) {
+      setPaymentMessage(error instanceof Error ? error.message : "Could not top up wallet.");
+    } finally {
+      setToppingUp(false);
+    }
+  };
+
   const savePaymentMethod = async () => {
     setSavingPayment(true);
     setPaymentMessage(null);
@@ -505,20 +572,23 @@ export function PassengerPaymentsMobilePage() {
       <div className="relative mb-8 overflow-hidden rounded-[2rem] bg-gradient-to-br from-primary to-orange-600 p-6 text-white shadow-xl shadow-primary/20">
         <div className="absolute right-0 top-0 h-32 w-32 translate-x-1/4 -translate-y-1/2 rounded-full bg-white/10 blur-2xl" />
         <div className="mb-1 flex items-center gap-2 text-sm font-medium text-white/80">
-          <Wallet className="h-4 w-4" /> Ride spend to date
+          <Wallet className="h-4 w-4" /> Current Balance
         </div>
         <div className="mb-6 text-4xl font-extrabold tracking-tight">
           <span className="mr-1 text-xl opacity-80">GHS</span>
-          {spent.toFixed(2)}
+          {walletBalance.toFixed(2)}
         </div>
+        <button type="button" disabled={toppingUp} onClick={() => void topUpWallet()} className="relative z-10 mb-4 h-12 w-full rounded-xl bg-white font-bold text-primary disabled:opacity-60">
+          {toppingUp ? "Starting top-up..." : "Top up balance"}
+        </button>
         <div className="relative z-10 grid grid-cols-2 gap-3">
           <div className="rounded-xl bg-white/20 p-4">
             <div className="text-xs font-medium text-white/70">Preferred</div>
             <div className="mt-1 font-bold">{paymentMethod === "MOMO" ? "MoMo" : "Cash"}</div>
           </div>
           <div className="rounded-xl bg-white/20 p-4">
-            <div className="text-xs font-medium text-white/70">Provider</div>
-            <div className="mt-1 font-bold">{paymentMethod === "MOMO" ? momoProvider : "Pay driver"}</div>
+            <div className="text-xs font-medium text-white/70">Ride spend</div>
+            <div className="mt-1 font-bold">GHS {spent.toFixed(2)}</div>
           </div>
         </div>
       </div>

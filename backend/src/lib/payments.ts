@@ -93,7 +93,7 @@ function getSyntheticEmail(input: { userId: string; phone?: string | null }) {
   return `pay-${digits}@qiilu.app`;
 }
 
-function getPaystackCallbackUrl() {
+function getPaystackCallbackUrl(callbackPath = "/passenger?payment=paystack") {
   if (process.env.PAYSTACK_CALLBACK_URL?.trim()) {
     return process.env.PAYSTACK_CALLBACK_URL.trim();
   }
@@ -103,7 +103,7 @@ function getPaystackCallbackUrl() {
     .map((value) => value.trim())
     .find(Boolean);
 
-  return origin ? `${origin}/passenger?payment=paystack` : undefined;
+  return origin ? `${origin}${callbackPath}` : undefined;
 }
 
 function normalizeProviderLabel(provider: string) {
@@ -154,6 +154,7 @@ async function initializePaystackCheckout(input: {
   phone?: string | null;
   email: string;
   metadata: PaystackMetadata;
+  callbackPath?: string;
 }) {
   const data = await paystackRequest<{
     authorization_url?: string;
@@ -167,7 +168,7 @@ async function initializePaystackCheckout(input: {
       currency: "GHS",
       reference: input.reference,
       channels: ["mobile_money"],
-      callback_url: getPaystackCallbackUrl(),
+      callback_url: getPaystackCallbackUrl(input.callbackPath),
       mobile_money: {
         phone: input.phone,
         provider: normalizeProviderLabel(input.metadata.provider ?? "mtn")
@@ -296,17 +297,41 @@ async function creditWalletTopUp(input: {
   return true;
 }
 
-export async function topUpDriverWallet(input: {
+export async function topUpWallet(input: {
   userId: string;
   amountGhs: number;
   provider: string;
+  callbackPath?: string;
 }) {
-  const wallet = await prisma.wallet.findUnique({
+  let wallet = await prisma.wallet.findUnique({
     where: { userId: input.userId },
     include: {
       user: true
     }
   });
+
+  if (!wallet) {
+    const user = await prisma.user.findUnique({
+      where: { id: input.userId }
+    });
+
+    if (!user) {
+      throw new Error("Wallet not found");
+    }
+
+    await prisma.wallet.create({
+      data: {
+        userId: input.userId
+      }
+    });
+
+    wallet = await prisma.wallet.findUnique({
+      where: { userId: input.userId },
+      include: {
+        user: true
+      }
+    });
+  }
 
   if (!wallet) {
     throw new Error("Wallet not found");
@@ -328,7 +353,8 @@ export async function topUpDriverWallet(input: {
         userId: wallet.userId,
         provider: input.provider,
         accountRef: wallet.user.phone
-      }
+      },
+      callbackPath: input.callbackPath
     });
   }
 
@@ -341,6 +367,15 @@ export async function topUpDriverWallet(input: {
   });
 
   return providerResult;
+}
+
+export async function topUpDriverWallet(input: {
+  userId: string;
+  amountGhs: number;
+  provider: string;
+  callbackPath?: string;
+}) {
+  return topUpWallet(input);
 }
 
 export async function initiateRidePayment(input: {

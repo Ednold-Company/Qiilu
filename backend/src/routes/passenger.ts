@@ -3,6 +3,7 @@ import type { AuthenticatedRequest } from "../middleware/auth.js";
 import { requireAuth } from "../middleware/auth.js";
 import { prisma } from "../lib/prisma.js";
 import { createRideBooking } from "../lib/ride-booking.js";
+import { topUpWallet } from "../lib/payments.js";
 import { buildVehicleFareProfile } from "../lib/pricing.js";
 import { realtimeGateway } from "../lib/realtime.js";
 import { estimateRoute, getRoutingStatus } from "../lib/routing.js";
@@ -68,6 +69,20 @@ function toTrustedContacts(value: unknown) {
   }
 
   return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+}
+
+function formatPassengerWallet(wallet: {
+  balanceGhs: number;
+  cashGhs: number;
+  momoGhs: number;
+  pendingWithdrawalGhs: number;
+}) {
+  return {
+    totalBalanceGhs: wallet.balanceGhs,
+    cashGhs: wallet.cashGhs,
+    momoGhs: wallet.momoGhs,
+    pendingWithdrawalGhs: wallet.pendingWithdrawalGhs
+  };
 }
 
 passengerRouter.get("/vehicle-options", async (_request, response) => {
@@ -237,6 +252,94 @@ passengerRouter.get("/experience", requireAuth, async (request: AuthenticatedReq
       lowBandwidthMode: user.lowBandwidthMode,
       safetyShareEnabled: user.safetyShareEnabled
     }
+  });
+});
+
+passengerRouter.get("/wallet", requireAuth, async (request: AuthenticatedRequest, response) => {
+  const user = await prisma.user.findUnique({
+    where: { id: request.auth!.userId },
+    select: {
+      role: true
+    }
+  });
+
+  if (!user || user.role !== "PASSENGER") {
+    response.status(404).json({ message: "Passenger wallet not found" });
+    return;
+  }
+
+  let wallet = await prisma.wallet.findUnique({
+    where: { userId: request.auth!.userId },
+    include: {
+      transactions: {
+        orderBy: { createdAt: "desc" },
+        take: 20
+      }
+    }
+  });
+
+  if (!wallet) {
+    await prisma.wallet.create({
+      data: {
+        userId: request.auth!.userId
+      }
+    });
+
+    wallet = await prisma.wallet.findUnique({
+      where: { userId: request.auth!.userId },
+      include: {
+        transactions: {
+          orderBy: { createdAt: "desc" },
+          take: 20
+        }
+      }
+    });
+  }
+
+  if (!wallet) {
+    response.status(500).json({ message: "Could not prepare passenger wallet" });
+    return;
+  }
+
+  response.json({
+    wallet: formatPassengerWallet(wallet),
+    transactions: wallet.transactions
+  });
+});
+
+passengerRouter.post("/wallet/top-up", requireAuth, async (request: AuthenticatedRequest, response) => {
+  const user = await prisma.user.findUnique({
+    where: { id: request.auth!.userId },
+    select: {
+      role: true
+    }
+  });
+
+  if (!user || user.role !== "PASSENGER") {
+    response.status(404).json({ message: "Passenger not found" });
+    return;
+  }
+
+  const body = request.body as { amountGhs?: number; provider?: string };
+
+  if (!body.amountGhs || body.amountGhs <= 0) {
+    response.status(400).json({ message: "A valid top-up amount is required" });
+    return;
+  }
+
+  const result = await topUpWallet({
+    userId: request.auth!.userId,
+    amountGhs: body.amountGhs,
+    provider: body.provider?.trim() || "MTN MoMo",
+    callbackPath: "/passenger/payment?payment=paystack"
+  });
+
+  response.json({
+    message:
+      result.status === "pending"
+        ? "Wallet top-up initialized. Complete the mobile money approval to finish it."
+        : "Wallet top-up processed",
+    result
   });
 });
 
