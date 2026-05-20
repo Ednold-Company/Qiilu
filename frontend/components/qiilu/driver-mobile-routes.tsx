@@ -998,9 +998,9 @@ export function DriverWalletMobilePage({ userId }: { userId: string }) {
               <div className="mb-6 inline-block rounded-full bg-white/20 px-3 py-1 text-sm font-medium">
                 Pending withdrawal: GHS {wallet.wallet.pendingWithdrawalGhs.toFixed(2)}
               </div>
-              <div className="mb-3 rounded-2xl bg-white/15 p-3">
-                <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-white/70">Cash-out amount</label>
-                <div className="mb-2 flex items-center gap-2 rounded-xl bg-white px-4">
+              <div className="mb-3 rounded-2xl bg-white p-3 text-slate-950 shadow-lg">
+                <label className="mb-2 block text-xs font-extrabold uppercase tracking-wider text-slate-600">Cash-out amount</label>
+                <div className="mb-2 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4">
                   <span className="text-sm font-bold text-secondary">GHS</span>
                   <input
                     value={withdrawAmount}
@@ -1009,7 +1009,7 @@ export function DriverWalletMobilePage({ userId }: { userId: string }) {
                     type="number"
                     min="1"
                     placeholder="100.00"
-                    className="h-12 w-full bg-transparent text-base font-bold text-slate-950 outline-none placeholder:text-slate-400"
+                    className="h-12 w-full bg-transparent text-base font-bold text-slate-950 outline-none placeholder:text-slate-500"
                   />
                 </div>
                 <input
@@ -1017,10 +1017,10 @@ export function DriverWalletMobilePage({ userId }: { userId: string }) {
                   onChange={(event) => setWithdrawAccountRef(event.target.value)}
                   inputMode="tel"
                   placeholder="MoMo number"
-                  className="h-12 w-full rounded-xl bg-white px-4 text-base font-bold text-slate-950 outline-none placeholder:text-slate-400"
+                  className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-base font-bold text-slate-950 outline-none placeholder:text-slate-500"
                 />
                 {withdrawExceedsBalance ? (
-                  <div className="mt-2 rounded-xl bg-red-500/20 px-3 py-2 text-xs font-bold text-white">
+                  <div className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
                     Withdrawal is higher than your available balance of GHS {wallet.wallet.totalBalanceGhs.toFixed(2)}.
                   </div>
                 ) : null}
@@ -1028,7 +1028,7 @@ export function DriverWalletMobilePage({ userId }: { userId: string }) {
               <button
                 onClick={() => void withdraw()}
                 disabled={withdrawing || !withdrawAmount || !withdrawAccountRef.trim() || withdrawExceedsBalance}
-                className="h-14 w-full rounded-xl bg-white font-bold text-secondary-foreground shadow-lg disabled:opacity-60"
+                className="h-14 w-full rounded-xl bg-white font-bold text-slate-950 shadow-lg disabled:bg-white/70 disabled:text-slate-500"
                 type="button"
               >
                 {withdrawing ? "Requesting..." : "Cash Out Now"}

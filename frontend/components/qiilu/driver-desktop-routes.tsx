@@ -1142,8 +1142,8 @@ export function DriverWalletDesktopPage({ user }: { user: SessionUser }) {
               <div className="mt-1 text-sm text-muted-foreground">Top up your balance or request a MoMo cash-out from this wallet.</div>
             </div>
             <div className="flex flex-wrap gap-3">
-              <label className="flex h-12 items-center gap-2 rounded-xl border border-border bg-muted/40 px-4">
-                <span className="text-sm font-bold text-muted-foreground">GHS</span>
+              <label className="flex h-12 items-center gap-2 rounded-xl border border-border bg-background px-4 shadow-sm">
+                <span className="text-sm font-bold text-foreground">GHS</span>
                 <input
                   value={topUpAmount}
                   onChange={(event) => setTopUpAmount(event.target.value)}
@@ -1167,7 +1167,7 @@ export function DriverWalletDesktopPage({ user }: { user: SessionUser }) {
                   type="number"
                   min="1"
                   placeholder="100.00"
-                  className="w-28 bg-transparent text-sm font-bold outline-none placeholder:text-muted-foreground/60"
+                  className="w-28 bg-transparent text-sm font-bold text-foreground outline-none placeholder:text-muted-foreground"
                 />
               </label>
               <input
@@ -1175,7 +1175,7 @@ export function DriverWalletDesktopPage({ user }: { user: SessionUser }) {
                 onChange={(event) => setWithdrawAccountRef(event.target.value)}
                 inputMode="tel"
                 placeholder="MoMo number"
-                className="h-12 w-40 rounded-xl border border-border bg-muted/40 px-4 text-sm font-bold outline-none placeholder:text-muted-foreground/60"
+                className="h-12 w-40 rounded-xl border border-border bg-background px-4 text-sm font-bold text-foreground shadow-sm outline-none placeholder:text-muted-foreground"
               />
               <button type="button" disabled={withdrawing || !withdrawAmount || !withdrawAccountRef.trim() || withdrawExceedsBalance} onClick={() => void withdraw()} className="rounded-xl border border-border px-5 py-3 font-bold text-foreground disabled:opacity-60">
                 {withdrawing ? "Requesting..." : "Cash out"}
