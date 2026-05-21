@@ -25,6 +25,7 @@ function safeParsePassengerKycNotes(notes: string) {
       documentType: typeof parsed.documentType === "string" ? parsed.documentType : null,
       documentNumber: typeof parsed.documentNumber === "string" ? parsed.documentNumber : null,
       legalName: typeof parsed.legalName === "string" ? parsed.legalName : null,
+      documentBackUrl: typeof parsed.documentBackUrl === "string" ? parsed.documentBackUrl : null,
       selfieProvided: parsed.selfieProvided === true,
       selfieImageUrl: typeof parsed.selfieImageUrl === "string" ? parsed.selfieImageUrl : null,
       notes: typeof parsed.notes === "string" ? parsed.notes : null
@@ -58,6 +59,7 @@ function formatPassengerKycSubmission(submission: {
     documentType: details?.documentType ?? null,
     documentNumber: details?.documentNumber ?? null,
     legalName: details?.legalName ?? null,
+    documentBackUrl: details?.documentBackUrl ?? null,
     selfieProvided: details?.selfieProvided ?? false,
     selfieImageUrl: details?.selfieImageUrl ?? null,
     reviewerNotes: details?.notes ?? null
@@ -398,6 +400,7 @@ passengerRouter.post("/kyc/:userId", requireAuth, async (request: AuthenticatedR
     documentNumber?: string;
     legalName?: string;
     documentUrl?: string;
+    documentBackUrl?: string;
     selfieProvided?: boolean;
     selfieImageUrl?: string;
     notes?: string;
@@ -409,7 +412,7 @@ passengerRouter.post("/kyc/:userId", requireAuth, async (request: AuthenticatedR
   }
 
   if (!body.documentUrl?.trim()) {
-    response.status(400).json({ message: "A document upload is required" });
+    response.status(400).json({ message: "A front document upload is required" });
     return;
   }
 
@@ -421,7 +424,24 @@ passengerRouter.post("/kyc/:userId", requireAuth, async (request: AuthenticatedR
   }
 
   if (isUploadedDocumentTooLarge(documentReference)) {
-    response.status(400).json({ message: "Document upload is too large. Use a smaller file." });
+    response.status(400).json({ message: "Front document upload is too large. Use a smaller file." });
+    return;
+  }
+
+  if (!body.documentBackUrl?.trim()) {
+    response.status(400).json({ message: "A back document upload is required" });
+    return;
+  }
+
+  const documentBackReference = normalizeDocumentReference(body.documentBackUrl);
+
+  if (!isValidDocumentReference(documentBackReference)) {
+    response.status(400).json({ message: "Upload a valid back image or PDF document" });
+    return;
+  }
+
+  if (isUploadedDocumentTooLarge(documentBackReference)) {
+    response.status(400).json({ message: "Back document upload is too large. Use a smaller file." });
     return;
   }
 
@@ -475,6 +495,7 @@ passengerRouter.post("/kyc/:userId", requireAuth, async (request: AuthenticatedR
         documentType: body.documentType,
         documentNumber: body.documentNumber.trim(),
         legalName: body.legalName.trim(),
+        documentBackUrl: documentBackReference,
         selfieProvided: true,
         selfieImageUrl: selfieReference,
         notes: body.notes?.trim() || null

@@ -40,6 +40,7 @@ function formatKycSubmission(submission: {
     documentNumber: details?.documentNumber ?? null,
     legalName: details?.legalName ?? null,
     issuingCountry: details?.issuingCountry ?? null,
+    documentBackUrl: details?.documentBackUrl ?? null,
     reviewerNotes: details?.notes ?? null
   };
 }
@@ -52,6 +53,7 @@ function safeParseKycNotes(notes: string) {
       documentNumber: typeof parsed.documentNumber === "string" ? parsed.documentNumber : null,
       legalName: typeof parsed.legalName === "string" ? parsed.legalName : null,
       issuingCountry: typeof parsed.issuingCountry === "string" ? parsed.issuingCountry : null,
+      documentBackUrl: typeof parsed.documentBackUrl === "string" ? parsed.documentBackUrl : null,
       notes: typeof parsed.notes === "string" ? parsed.notes : null
     };
   } catch {
@@ -518,11 +520,12 @@ driverRouter.post("/kyc/:userId", requireAuth, async (request: AuthenticatedRequ
     legalName?: string;
     issuingCountry?: string;
     documentUrl?: string;
+    documentBackUrl?: string;
     notes?: string;
   };
 
   if (!body.documentUrl) {
-    response.status(400).json({ message: "A document upload is required" });
+    response.status(400).json({ message: "A front document upload is required" });
     return;
   }
 
@@ -534,7 +537,24 @@ driverRouter.post("/kyc/:userId", requireAuth, async (request: AuthenticatedRequ
   }
 
   if (isUploadedDocumentTooLarge(documentReference)) {
-    response.status(400).json({ message: "Document upload is too large. Use a smaller file." });
+    response.status(400).json({ message: "Front document upload is too large. Use a smaller file." });
+    return;
+  }
+
+  if (!body.documentBackUrl?.trim()) {
+    response.status(400).json({ message: "A back document upload is required" });
+    return;
+  }
+
+  const documentBackReference = normalizeDocumentReference(body.documentBackUrl);
+
+  if (!isValidDocumentReference(documentBackReference)) {
+    response.status(400).json({ message: "Upload a valid back image or PDF document" });
+    return;
+  }
+
+  if (isUploadedDocumentTooLarge(documentBackReference)) {
+    response.status(400).json({ message: "Back document upload is too large. Use a smaller file." });
     return;
   }
 
@@ -570,6 +590,7 @@ driverRouter.post("/kyc/:userId", requireAuth, async (request: AuthenticatedRequ
     documentNumber: body.documentNumber.trim(),
     legalName: body.legalName.trim(),
     issuingCountry: body.issuingCountry?.trim() || "Ghana",
+    documentBackUrl: documentBackReference,
     notes: body.notes?.trim() || null
   });
 

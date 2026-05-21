@@ -125,6 +125,7 @@ function parseKycNotes(notes: string | null) {
       documentNumber: typeof parsed.documentNumber === "string" ? parsed.documentNumber : null,
       legalName: typeof parsed.legalName === "string" ? parsed.legalName : null,
       issuingCountry: typeof parsed.issuingCountry === "string" ? parsed.issuingCountry : null,
+      documentBackUrl: typeof parsed.documentBackUrl === "string" ? parsed.documentBackUrl : null,
       selfieProvided: parsed.selfieProvided === true,
       selfieImageUrl: typeof parsed.selfieImageUrl === "string" ? parsed.selfieImageUrl : null,
       notes: typeof parsed.notes === "string" ? parsed.notes : null
@@ -834,20 +835,36 @@ export default function AdminPage() {
                               <div>Name: {details?.legalName ?? "Not specified"}</div>
                               <div>Country: {details?.issuingCountry ?? "Not specified"}</div>
                             </div>
-                            <div className="mb-4 grid gap-3 md:grid-cols-2">
+                            <div className="mb-4 grid gap-3 md:grid-cols-3">
                               <div className="rounded-2xl border border-border/80 bg-muted/30 p-3">
                                 <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                                  Document preview
+                                  Front preview
                                 </div>
                                 {isImageReference(submission.documentUrl) ? (
                                   <img
                                     src={submission.documentUrl}
-                                    alt={`${submission.user.name} KYC document`}
+                                    alt={`${submission.user.name} KYC document front`}
                                     className="h-36 w-full rounded-xl object-cover"
                                   />
                                 ) : (
                                   <div className="flex h-36 items-center justify-center rounded-xl bg-background text-sm text-muted-foreground">
                                     Preview unavailable for this file type
+                                  </div>
+                                )}
+                              </div>
+                              <div className="rounded-2xl border border-border/80 bg-muted/30 p-3">
+                                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                  Back preview
+                                </div>
+                                {isImageReference(details?.documentBackUrl) ? (
+                                  <img
+                                    src={details?.documentBackUrl ?? undefined}
+                                    alt={`${submission.user.name} KYC document back`}
+                                    className="h-36 w-full rounded-xl object-cover"
+                                  />
+                                ) : (
+                                  <div className="flex h-36 items-center justify-center rounded-xl bg-background text-sm text-muted-foreground">
+                                    {details?.documentBackUrl ? "Preview unavailable for this file type" : "Back side missing"}
                                   </div>
                                 )}
                               </div>
@@ -917,8 +934,13 @@ export default function AdminPage() {
                             </div>
                             <div className="flex flex-wrap gap-2">
                               <Link href={submission.documentUrl} target="_blank">
-                                <Button variant="outline" className="rounded-full">Open document</Button>
+                                <Button variant="outline" className="rounded-full">Open front</Button>
                               </Link>
+                              {details?.documentBackUrl ? (
+                                <Link href={details.documentBackUrl} target="_blank">
+                                  <Button variant="outline" className="rounded-full">Open back</Button>
+                                </Link>
+                              ) : null}
                               {details?.selfieImageUrl ? (
                                 <Link href={details.selfieImageUrl} target="_blank">
                                   <Button variant="outline" className="rounded-full">Open selfie</Button>

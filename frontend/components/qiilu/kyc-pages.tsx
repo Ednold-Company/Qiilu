@@ -13,17 +13,19 @@ import { readDocumentFileAsDataUrl } from "@/lib/document-upload";
 
 type DriverKycResponse = {
   kycStatus: "PENDING" | "APPROVED" | "REJECTED";
-  latestSubmission: { status: "PENDING" | "APPROVED" | "REJECTED"; documentType: string | null; documentNumber: string | null; legalName: string | null; documentUrl: string; reviewerNotes: string | null; createdAt: string } | null;
-  submissions: Array<{ id: string; status: "PENDING" | "APPROVED" | "REJECTED"; documentType: string | null; documentNumber: string | null; documentUrl: string; reviewerNotes: string | null; createdAt: string }>;
+  latestSubmission: { status: "PENDING" | "APPROVED" | "REJECTED"; documentType: string | null; documentNumber: string | null; legalName: string | null; documentUrl: string; documentBackUrl: string | null; reviewerNotes: string | null; createdAt: string } | null;
+  submissions: Array<{ id: string; status: "PENDING" | "APPROVED" | "REJECTED"; documentType: string | null; documentNumber: string | null; documentUrl: string; documentBackUrl: string | null; reviewerNotes: string | null; createdAt: string }>;
   requiredDocuments: string[];
 };
 
 type PassengerKycResponse = {
   kycStatus: "PENDING" | "APPROVED" | "REJECTED";
-  latestSubmission: { status: "PENDING" | "APPROVED" | "REJECTED"; documentType: string | null; documentNumber: string | null; legalName: string | null; documentUrl: string; selfieProvided: boolean; selfieImageUrl: string | null; reviewerNotes: string | null; createdAt: string } | null;
-  submissions: Array<{ id: string; status: "PENDING" | "APPROVED" | "REJECTED"; documentType: string | null; documentNumber: string | null; documentUrl: string; selfieProvided: boolean; selfieImageUrl: string | null; reviewerNotes: string | null; createdAt: string }>;
+  latestSubmission: { status: "PENDING" | "APPROVED" | "REJECTED"; documentType: string | null; documentNumber: string | null; legalName: string | null; documentUrl: string; documentBackUrl: string | null; selfieProvided: boolean; selfieImageUrl: string | null; reviewerNotes: string | null; createdAt: string } | null;
+  submissions: Array<{ id: string; status: "PENDING" | "APPROVED" | "REJECTED"; documentType: string | null; documentNumber: string | null; documentUrl: string; documentBackUrl: string | null; selfieProvided: boolean; selfieImageUrl: string | null; reviewerNotes: string | null; createdAt: string }>;
   requiredDocuments: string[];
 };
+
+type DocumentSide = "front" | "back";
 
 function statusTone(status: "PENDING" | "APPROVED" | "REJECTED") {
   if (status === "APPROVED") return "bg-secondary/10 text-secondary";
@@ -102,6 +104,15 @@ function UploadField({
   );
 }
 
+function sideLabel(side: DocumentSide) {
+  return side === "front" ? "Front side" : "Back side";
+}
+
+function sideHelper(documentType: string, side: DocumentSide) {
+  const label = documentType.replaceAll("_", " ").toLowerCase();
+  return `Upload or take a clear photo of the ${sideLabel(side).toLowerCase()} of your ${label}. Images and PDFs up to 5MB are accepted.`;
+}
+
 function KycReviewerFeedback({
   status,
   reviewerNotes
@@ -132,6 +143,8 @@ function DriverKycContent({ user, compact }: { user: SessionUser; compact: boole
   const [issuingCountry, setIssuingCountry] = useState("Ghana");
   const [documentUrl, setDocumentUrl] = useState("");
   const [documentFileName, setDocumentFileName] = useState<string | null>(null);
+  const [documentBackUrl, setDocumentBackUrl] = useState("");
+  const [documentBackFileName, setDocumentBackFileName] = useState<string | null>(null);
   const [consent, setConsent] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -142,15 +155,29 @@ function DriverKycContent({ user, compact }: { user: SessionUser; compact: boole
     load().catch(() => setPayload(null));
   }, [user.id]);
 
-  const handleDocumentSelect = async (file: File) => {
+  const handleDocumentSelect = async (file: File, side: DocumentSide) => {
     try {
       const dataUrl = await readDocumentFileAsDataUrl(file);
-      setDocumentUrl(dataUrl);
-      setDocumentFileName(file.name);
+      if (side === "front") {
+        setDocumentUrl(dataUrl);
+        setDocumentFileName(file.name);
+      } else {
+        setDocumentBackUrl(dataUrl);
+        setDocumentBackFileName(file.name);
+      }
       setMessage(null);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not read the selected document.");
     }
+  };
+
+  const selectDocumentType = (value: string) => {
+    setDocumentType(value);
+    setDocumentUrl("");
+    setDocumentFileName(null);
+    setDocumentBackUrl("");
+    setDocumentBackFileName(null);
+    setMessage(null);
   };
 
   const submit = async () => {
@@ -159,7 +186,7 @@ function DriverKycContent({ user, compact }: { user: SessionUser; compact: boole
     try {
       await fetchJson(`/driver/kyc/${user.id}`, {
         method: "POST",
-        body: JSON.stringify({ documentType, documentNumber, legalName, issuingCountry, documentUrl })
+        body: JSON.stringify({ documentType, documentNumber, legalName, issuingCountry, documentUrl, documentBackUrl })
       });
       await load();
       setStep(4);
@@ -201,24 +228,33 @@ function DriverKycContent({ user, compact }: { user: SessionUser; compact: boole
           <div>
             <div className="mb-6 flex flex-wrap gap-3">
               {(payload?.requiredDocuments ?? ["DRIVERS_LICENSE", "GHANA_CARD"]).map((item) => (
-                <button key={item} type="button" onClick={() => setDocumentType(item)} className={`rounded-full border-2 px-4 py-2 text-sm font-bold ${documentType === item ? "border-primary bg-primary/10 text-primary" : "border-border bg-muted/50 text-muted-foreground"}`}>{item.replaceAll("_", " ")}</button>
+                <button key={item} type="button" onClick={() => selectDocumentType(item)} className={`rounded-full border-2 px-4 py-2 text-sm font-bold ${documentType === item ? "border-primary bg-primary/10 text-primary" : "border-border bg-muted/50 text-muted-foreground"}`}>{item.replaceAll("_", " ")}</button>
               ))}
             </div>
             <div className="mb-6 rounded-2xl border border-dashed border-border bg-muted/30 p-4">
               <UploadCloud className="mb-4 h-10 w-10 text-muted-foreground" />
-              <UploadField
-                label="Document photo"
-                helper="Upload or take a clear photo of the selected document. Images and PDFs up to 5MB are accepted."
-                fileName={documentFileName}
-                onSelect={(file) => void handleDocumentSelect(file)}
-                disabled={submitting}
-              />
-              {documentUrl ? <div className="mt-3 rounded-xl bg-secondary/10 px-4 py-3 text-sm font-bold text-secondary">Document selected successfully. You can continue.</div> : null}
+              <div className="grid gap-4 md:grid-cols-2">
+                <UploadField
+                  label="Front side"
+                  helper={sideHelper(documentType, "front")}
+                  fileName={documentFileName}
+                  onSelect={(file) => void handleDocumentSelect(file, "front")}
+                  disabled={submitting}
+                />
+                <UploadField
+                  label="Back side"
+                  helper={sideHelper(documentType, "back")}
+                  fileName={documentBackFileName}
+                  onSelect={(file) => void handleDocumentSelect(file, "back")}
+                  disabled={submitting}
+                />
+              </div>
+              {documentUrl && documentBackUrl ? <div className="mt-3 rounded-xl bg-secondary/10 px-4 py-3 text-sm font-bold text-secondary">Front and back selected successfully. You can continue.</div> : null}
             </div>
             {message ? <div className="mb-6 rounded-xl bg-muted/60 px-4 py-3 text-sm text-muted-foreground">{message}</div> : null}
             <div className="flex items-center justify-between">
               <button type="button" className="flex items-center text-muted-foreground" onClick={() => setStep(1)}><ChevronLeft className="mr-2 h-4 w-4" /> Back</button>
-              <button type="button" disabled={!documentUrl} className="rounded-xl bg-primary px-8 py-3 font-bold text-primary-foreground disabled:opacity-60" onClick={() => setStep(3)}>Continue</button>
+              <button type="button" disabled={!documentUrl || !documentBackUrl} className="rounded-xl bg-primary px-8 py-3 font-bold text-primary-foreground disabled:opacity-60" onClick={() => setStep(3)}>Continue</button>
             </div>
           </div>
         ) : null}
@@ -229,14 +265,15 @@ function DriverKycContent({ user, compact }: { user: SessionUser; compact: boole
             <Field label="Issuing Country" value={issuingCountry} onChange={setIssuingCountry} placeholder="Ghana" />
             <div className="rounded-xl bg-muted/30 p-4">
               <div className="mb-2 text-sm font-bold uppercase tracking-wider text-muted-foreground">Uploaded Document</div>
-              <div className="text-sm font-medium">{documentFileName ?? "Document selected"}</div>
+              <div className="text-sm font-medium">Front: {documentFileName ?? "Not selected"}</div>
+              <div className="mt-1 text-sm font-medium">Back: {documentBackFileName ?? "Not selected"}</div>
               <button type="button" className="mt-3 text-sm font-bold text-primary" onClick={() => setStep(2)}>Change document</button>
             </div>
             <label className="flex items-start gap-3 rounded-xl bg-muted/30 p-4"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} className="mt-1 h-5 w-5 rounded" /><span className="text-sm text-muted-foreground">I confirm these documents belong to me and the information is accurate.</span></label>
             {message ? <div className="rounded-xl bg-muted/60 px-4 py-3 text-sm text-muted-foreground">{message}</div> : null}
             <div className="flex items-center justify-between">
               <button type="button" className="flex items-center text-muted-foreground" onClick={() => setStep(2)}><ChevronLeft className="mr-2 h-4 w-4" /> Back</button>
-              <button type="button" disabled={!consent || !documentNumber || !documentUrl || submitting} onClick={() => void submit()} className="rounded-xl bg-primary px-8 py-3 font-bold text-primary-foreground disabled:opacity-60">{submitting ? "Submitting..." : "Submit Application"}</button>
+              <button type="button" disabled={!consent || !documentNumber || !documentUrl || !documentBackUrl || submitting} onClick={() => void submit()} className="rounded-xl bg-primary px-8 py-3 font-bold text-primary-foreground disabled:opacity-60">{submitting ? "Submitting..." : "Submit Application"}</button>
             </div>
           </div>
         ) : null}
@@ -255,7 +292,8 @@ function DriverKycContent({ user, compact }: { user: SessionUser; compact: boole
                   </div>
                   <div className="text-right">
                     <span className={`rounded-full px-3 py-1 text-xs font-bold uppercase ${statusTone(submission.status)}`}>{submission.status}</span>
-                    <a href={submission.documentUrl} target="_blank" rel="noreferrer" className="mt-2 block text-xs font-bold text-primary">Open document</a>
+                    <a href={submission.documentUrl} target="_blank" rel="noreferrer" className="mt-2 block text-xs font-bold text-primary">Open front</a>
+                    {submission.documentBackUrl ? <a href={submission.documentBackUrl} target="_blank" rel="noreferrer" className="mt-1 block text-xs font-bold text-primary">Open back</a> : null}
                   </div>
                   {submission.reviewerNotes ? <div className="mt-3"><KycReviewerFeedback status={submission.status} reviewerNotes={submission.reviewerNotes} /></div> : null}
                 </div>
@@ -276,6 +314,8 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
   const [legalName, setLegalName] = useState(user.name);
   const [documentUrl, setDocumentUrl] = useState("");
   const [documentFileName, setDocumentFileName] = useState<string | null>(null);
+  const [documentBackUrl, setDocumentBackUrl] = useState("");
+  const [documentBackFileName, setDocumentBackFileName] = useState<string | null>(null);
   const [selfieProvided, setSelfieProvided] = useState(false);
   const [selfieImageUrl, setSelfieImageUrl] = useState("");
   const [capturing, setCapturing] = useState(false);
@@ -333,15 +373,29 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
     setCameraReady(false);
   };
 
-  const handleDocumentSelect = async (file: File) => {
+  const handleDocumentSelect = async (file: File, side: DocumentSide) => {
     try {
       const dataUrl = await readDocumentFileAsDataUrl(file);
-      setDocumentUrl(dataUrl);
-      setDocumentFileName(file.name);
+      if (side === "front") {
+        setDocumentUrl(dataUrl);
+        setDocumentFileName(file.name);
+      } else {
+        setDocumentBackUrl(dataUrl);
+        setDocumentBackFileName(file.name);
+      }
       setMessage(null);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not read the selected document.");
     }
+  };
+
+  const selectDocumentType = (value: string) => {
+    setDocumentType(value);
+    setDocumentUrl("");
+    setDocumentFileName(null);
+    setDocumentBackUrl("");
+    setDocumentBackFileName(null);
+    setMessage(null);
   };
 
   const startCapture = async () => {
@@ -412,7 +466,7 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
     try {
       await fetchJson(`/passenger/kyc/${user.id}`, {
         method: "POST",
-        body: JSON.stringify({ documentType, documentNumber, legalName, documentUrl, selfieProvided, selfieImageUrl })
+        body: JSON.stringify({ documentType, documentNumber, legalName, documentUrl, documentBackUrl, selfieProvided, selfieImageUrl })
       });
       await load();
       setStep(4);
@@ -453,24 +507,33 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
           <div>
             <div className="mb-6 flex flex-wrap gap-3">
               {(payload?.requiredDocuments ?? ["GHANA_CARD", "PASSPORT"]).map((item) => (
-                <button key={item} type="button" onClick={() => setDocumentType(item)} className={`rounded-full border-2 px-4 py-2 text-sm font-bold ${documentType === item ? "border-primary bg-primary/10 text-primary" : "border-border bg-muted/50 text-muted-foreground"}`}>{item.replaceAll("_", " ")}</button>
+                <button key={item} type="button" onClick={() => selectDocumentType(item)} className={`rounded-full border-2 px-4 py-2 text-sm font-bold ${documentType === item ? "border-primary bg-primary/10 text-primary" : "border-border bg-muted/50 text-muted-foreground"}`}>{item.replaceAll("_", " ")}</button>
               ))}
             </div>
             <div className="mb-6 rounded-2xl border border-dashed border-border bg-muted/30 p-4">
               <UploadCloud className="mb-4 h-10 w-10 text-muted-foreground" />
-              <UploadField
-                label="Document photo"
-                helper="Upload or take a clear photo of the selected document. Images and PDFs up to 5MB are accepted."
-                fileName={documentFileName}
-                onSelect={(file) => void handleDocumentSelect(file)}
-                disabled={submitting}
-              />
-              {documentUrl ? <div className="mt-3 rounded-xl bg-secondary/10 px-4 py-3 text-sm font-bold text-secondary">Document selected successfully. Next, capture your selfie.</div> : null}
+              <div className="grid gap-4 md:grid-cols-2">
+                <UploadField
+                  label="Front side"
+                  helper={sideHelper(documentType, "front")}
+                  fileName={documentFileName}
+                  onSelect={(file) => void handleDocumentSelect(file, "front")}
+                  disabled={submitting}
+                />
+                <UploadField
+                  label="Back side"
+                  helper={sideHelper(documentType, "back")}
+                  fileName={documentBackFileName}
+                  onSelect={(file) => void handleDocumentSelect(file, "back")}
+                  disabled={submitting}
+                />
+              </div>
+              {documentUrl && documentBackUrl ? <div className="mt-3 rounded-xl bg-secondary/10 px-4 py-3 text-sm font-bold text-secondary">Front and back selected successfully. Next, capture your selfie.</div> : null}
             </div>
             {message ? <div className="mb-6 rounded-xl bg-muted/60 px-4 py-3 text-sm text-muted-foreground">{message}</div> : null}
             <div className="flex items-center justify-between">
               <button type="button" className="flex items-center text-muted-foreground" onClick={() => setStep(1)}><ChevronLeft className="mr-2 h-4 w-4" /> Back</button>
-              <button type="button" disabled={!documentUrl} className="rounded-xl bg-primary px-8 py-3 font-bold text-primary-foreground disabled:opacity-60" onClick={() => setStep(3)}>Continue</button>
+              <button type="button" disabled={!documentUrl || !documentBackUrl} className="rounded-xl bg-primary px-8 py-3 font-bold text-primary-foreground disabled:opacity-60" onClick={() => setStep(3)}>Continue</button>
             </div>
           </div>
         ) : null}
@@ -550,10 +613,17 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
               <Field label="Full Name" value={legalName} onChange={setLegalName} placeholder="Full name" />
               <Field label="Document Number" value={documentNumber} onChange={setDocumentNumber} placeholder="GHA-XXXXXXXXX-X" />
               <UploadField
-                label="Uploaded Document"
-                helper="Upload an image or PDF up to 5MB."
+                label="Front side"
+                helper={sideHelper(documentType, "front")}
                 fileName={documentFileName}
-                onSelect={(file) => void handleDocumentSelect(file)}
+                onSelect={(file) => void handleDocumentSelect(file, "front")}
+                disabled={submitting}
+              />
+              <UploadField
+                label="Back side"
+                helper={sideHelper(documentType, "back")}
+                fileName={documentBackFileName}
+                onSelect={(file) => void handleDocumentSelect(file, "back")}
                 disabled={submitting}
               />
               <div className="rounded-xl bg-muted/30 p-4">
@@ -566,7 +636,7 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
             {message ? <div className="mb-6 rounded-xl bg-muted/60 px-4 py-3 text-sm text-muted-foreground">{message}</div> : null}
             <div className="flex items-center justify-between">
               <button type="button" className="flex items-center text-muted-foreground" onClick={() => setStep(3)}><ChevronLeft className="mr-2 h-4 w-4" /> Back</button>
-              <button type="button" disabled={!consent || !documentNumber || !documentUrl || !selfieProvided || submitting} onClick={() => void submit()} className="rounded-xl bg-primary px-8 py-3 font-bold text-primary-foreground disabled:opacity-60">{submitting ? "Submitting..." : "Submit for Verification"}</button>
+              <button type="button" disabled={!consent || !documentNumber || !documentUrl || !documentBackUrl || !selfieProvided || submitting} onClick={() => void submit()} className="rounded-xl bg-primary px-8 py-3 font-bold text-primary-foreground disabled:opacity-60">{submitting ? "Submitting..." : "Submit for Verification"}</button>
             </div>
             {(payload?.submissions ?? []).length ? <div className="mt-6 space-y-3">{payload!.submissions.map((submission) => <div key={submission.id} className="flex items-center justify-between rounded-xl border border-border p-4"><div><div className="font-bold">{submission.documentType?.replaceAll("_", " ") ?? "Document"}</div><div className="text-xs text-muted-foreground">{submission.documentNumber ?? "No number"} • {new Date(submission.createdAt).toLocaleString()}</div></div><span className={`rounded-full px-3 py-1 text-xs font-bold uppercase ${statusTone(submission.status)}`}>{submission.status}</span></div>)}</div> : null}
           </div>

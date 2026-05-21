@@ -100,14 +100,24 @@ export default function AdminKycPage() {
                   <div>Name: {details?.legalName ?? "Not specified"}</div>
                   <div>Country: {details?.issuingCountry ?? "Not specified"}</div>
                 </div>
-                <div className="mb-4 grid gap-3 md:grid-cols-2">
+                <div className="mb-4 grid gap-3 md:grid-cols-3">
                   <div className="rounded-2xl border border-border/80 bg-muted/30 p-3">
-                    <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Document preview</div>
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Front preview</div>
                     {isImageReference(submission.documentUrl) ? (
-                      <img src={submission.documentUrl} alt={`${submission.user.name} KYC document`} className="h-36 w-full rounded-xl object-cover" />
+                      <img src={submission.documentUrl} alt={`${submission.user.name} KYC document front`} className="h-36 w-full rounded-xl object-cover" />
                     ) : (
                       <div className="flex h-36 items-center justify-center rounded-xl bg-background text-sm text-muted-foreground">
                         Preview unavailable for this file type
+                      </div>
+                    )}
+                  </div>
+                  <div className="rounded-2xl border border-border/80 bg-muted/30 p-3">
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Back preview</div>
+                    {isImageReference(details?.documentBackUrl) ? (
+                      <img src={details?.documentBackUrl ?? undefined} alt={`${submission.user.name} KYC document back`} className="h-36 w-full rounded-xl object-cover" />
+                    ) : (
+                      <div className="flex h-36 items-center justify-center rounded-xl bg-background text-sm text-muted-foreground">
+                        {details?.documentBackUrl ? "Preview unavailable for this file type" : "Back side missing"}
                       </div>
                     )}
                   </div>
@@ -167,8 +177,13 @@ export default function AdminKycPage() {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Link href={submission.documentUrl} target="_blank">
-                    <Button variant="outline" className="rounded-full">Open document</Button>
+                    <Button variant="outline" className="rounded-full">Open front</Button>
                   </Link>
+                  {details?.documentBackUrl ? (
+                    <Link href={details.documentBackUrl} target="_blank">
+                      <Button variant="outline" className="rounded-full">Open back</Button>
+                    </Link>
+                  ) : null}
                   {details?.selfieImageUrl ? (
                     <Link href={details.selfieImageUrl} target="_blank">
                       <Button variant="outline" className="rounded-full">Open selfie</Button>

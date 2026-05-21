@@ -78,6 +78,7 @@ export function parseKycNotes(notes: string | null) {
       documentNumber: typeof parsed.documentNumber === "string" ? parsed.documentNumber : null,
       legalName: typeof parsed.legalName === "string" ? parsed.legalName : null,
       issuingCountry: typeof parsed.issuingCountry === "string" ? parsed.issuingCountry : null,
+      documentBackUrl: typeof parsed.documentBackUrl === "string" ? parsed.documentBackUrl : null,
       selfieProvided: parsed.selfieProvided === true,
       selfieImageUrl: typeof parsed.selfieImageUrl === "string" ? parsed.selfieImageUrl : null,
       notes: typeof parsed.notes === "string" ? parsed.notes : null

@@ -131,6 +131,7 @@ type DriverKycResponse = {
     id: string;
     status: "PENDING" | "APPROVED" | "REJECTED";
     documentUrl: string;
+    documentBackUrl: string | null;
     documentType: string | null;
     documentNumber: string | null;
     legalName: string | null;
@@ -142,6 +143,7 @@ type DriverKycResponse = {
     id: string;
     status: "PENDING" | "APPROVED" | "REJECTED";
     documentUrl: string;
+    documentBackUrl: string | null;
     documentType: string | null;
     documentNumber: string | null;
     legalName: string | null;
@@ -1368,11 +1370,14 @@ export function DriverAccountDesktopPage({ user }: { user: SessionUser }) {
   const [issuingCountry, setIssuingCountry] = useState("Ghana");
   const [documentUrl, setDocumentUrl] = useState("");
   const [documentFileName, setDocumentFileName] = useState<string | null>(null);
+  const [documentBackUrl, setDocumentBackUrl] = useState("");
+  const [documentBackFileName, setDocumentBackFileName] = useState<string | null>(null);
   const [kycMessage, setKycMessage] = useState<string | null>(null);
   const [submittingKyc, setSubmittingKyc] = useState(false);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [uploadingProfileImage, setUploadingProfileImage] = useState(false);
   const kycDocumentInputRef = useRef<HTMLInputElement | null>(null);
+  const kycDocumentBackInputRef = useRef<HTMLInputElement | null>(null);
 
   const loadAccount = async () => {
     const [mePayload, walletPayload, kycPayload] = await Promise.all([
@@ -1432,11 +1437,15 @@ export function DriverAccountDesktopPage({ user }: { user: SessionUser }) {
           documentNumber,
           legalName,
           issuingCountry,
-          documentUrl
+          documentUrl,
+          documentBackUrl
         })
       });
       setDocumentNumber("");
       setDocumentUrl("");
+      setDocumentFileName(null);
+      setDocumentBackUrl("");
+      setDocumentBackFileName(null);
       await loadAccount();
       setKycMessage("KYC submission received and queued for review.");
     } catch (error) {
@@ -1446,13 +1455,18 @@ export function DriverAccountDesktopPage({ user }: { user: SessionUser }) {
     }
   };
 
-  const uploadKycDocument = async (file: File) => {
+  const uploadKycDocument = async (file: File, side: "front" | "back") => {
     setKycMessage(null);
 
     try {
       const value = await readDocumentFileAsDataUrl(file);
-      setDocumentUrl(value);
-      setDocumentFileName(file.name);
+      if (side === "front") {
+        setDocumentUrl(value);
+        setDocumentFileName(file.name);
+      } else {
+        setDocumentBackUrl(value);
+        setDocumentBackFileName(file.name);
+      }
     } catch (error) {
       setKycMessage(error instanceof Error ? error.message : "Could not read the selected document.");
     }
@@ -1574,7 +1588,13 @@ export function DriverAccountDesktopPage({ user }: { user: SessionUser }) {
                     <span className="text-sm font-bold text-muted-foreground">Document Type</span>
                     <select
                       value={documentType}
-                      onChange={(event) => setDocumentType(event.target.value)}
+                      onChange={(event) => {
+                        setDocumentType(event.target.value);
+                        setDocumentUrl("");
+                        setDocumentFileName(null);
+                        setDocumentBackUrl("");
+                        setDocumentBackFileName(null);
+                      }}
                       className="h-12 w-full rounded-xl border border-border bg-muted/50 px-4 text-sm outline-none"
                     >
                       {(kyc?.requiredDocuments ?? ["DRIVERS_LICENSE", "GHANA_CARD", "VEHICLE_INSURANCE", "ROAD_WORTHINESS"]).map((item) => (
@@ -1589,10 +1609,10 @@ export function DriverAccountDesktopPage({ user }: { user: SessionUser }) {
                   <FieldInput label="Issuing Country" value={issuingCountry} onChange={setIssuingCountry} placeholder="Ghana" />
                 </div>
                 <label className="space-y-2 md:col-span-2">
-                  <span className="text-sm font-bold text-muted-foreground">Uploaded Document</span>
+                  <span className="text-sm font-bold text-muted-foreground">Front side</span>
                   <div className="rounded-xl border border-dashed border-border bg-muted/30 p-4">
                     <div className="text-sm font-semibold">{documentFileName ?? "No file selected yet"}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">Upload an image or PDF up to 5MB.</div>
+                    <div className="mt-1 text-xs text-muted-foreground">Upload the front side as an image or PDF up to 5MB.</div>
                     <button
                       type="button"
                       disabled={submittingKyc}
@@ -1610,7 +1630,36 @@ export function DriverAccountDesktopPage({ user }: { user: SessionUser }) {
                       onChange={(event) => {
                         const file = event.target.files?.[0];
                         if (file) {
-                          void uploadKycDocument(file);
+                          void uploadKycDocument(file, "front");
+                        }
+                        event.currentTarget.value = "";
+                      }}
+                    />
+                  </div>
+                </label>
+                <label className="space-y-2 md:col-span-2">
+                  <span className="text-sm font-bold text-muted-foreground">Back side</span>
+                  <div className="rounded-xl border border-dashed border-border bg-muted/30 p-4">
+                    <div className="text-sm font-semibold">{documentBackFileName ?? "No file selected yet"}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">Upload the back side as an image or PDF up to 5MB.</div>
+                    <button
+                      type="button"
+                      disabled={submittingKyc}
+                      onClick={() => kycDocumentBackInputRef.current?.click()}
+                      className="mt-3 inline-flex rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Choose file
+                    </button>
+                    <input
+                      ref={kycDocumentBackInputRef}
+                      type="file"
+                      accept="image/*,application/pdf"
+                      className="sr-only"
+                      disabled={submittingKyc}
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) {
+                          void uploadKycDocument(file, "back");
                         }
                         event.currentTarget.value = "";
                       }}
@@ -1621,7 +1670,7 @@ export function DriverAccountDesktopPage({ user }: { user: SessionUser }) {
                 <div className="flex justify-end">
                   <button
                     type="button"
-                    disabled={submittingKyc}
+                    disabled={submittingKyc || !documentUrl || !documentBackUrl}
                     onClick={() => void submitKyc()}
                     className="rounded-xl bg-primary px-6 py-3 font-bold text-primary-foreground disabled:opacity-60"
                   >
@@ -1651,8 +1700,9 @@ export function DriverAccountDesktopPage({ user }: { user: SessionUser }) {
                           {submission.status}
                         </div>
                         <a href={submission.documentUrl} target="_blank" rel="noreferrer" className="mt-2 block text-xs font-bold text-primary">
-                          Open document
+                          Open front
                         </a>
+                        {submission.documentBackUrl ? <a href={submission.documentBackUrl} target="_blank" rel="noreferrer" className="mt-1 block text-xs font-bold text-primary">Open back</a> : null}
                       </div>
                     </div>
                   ))
