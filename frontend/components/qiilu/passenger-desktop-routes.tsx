@@ -746,6 +746,12 @@ export function PassengerPaymentsDesktopPage({ user }: { user: SessionUser }) {
   };
 
   useEffect(() => {
+    const paymentStatus = new URLSearchParams(window.location.search).get("payment");
+    if (paymentStatus === "paystack") {
+      setPaymentMessage("Payment approval received. Your balance will update when Paystack confirms the transaction.");
+      void loadWallet().catch(() => setWallet(null));
+    }
+
     fetchJson<{ experience: PassengerExperience }>("/passenger/experience")
       .then((payload) => {
         setExperience(payload.experience);

@@ -1,5 +1,5 @@
 const uploadedDocumentPattern =
-  /^data:(image\/(png|jpeg|jpg|webp)|application\/pdf);base64,[a-z0-9+/=]+$/i;
+  /^data:(image\/[a-z0-9.+-]+|application\/pdf);base64,[a-z0-9+/=]+$/i;
 
 export function normalizeDocumentReference(value: string) {
   return value.trim();

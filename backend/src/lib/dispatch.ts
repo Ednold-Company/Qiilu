@@ -5,6 +5,12 @@ import { estimateRoute } from "./routing.js";
 
 type DriverCandidate = Pick<User, "id" | "name" | "lastKnownLat" | "lastKnownLng">;
 
+export const DRIVER_LOCATION_FRESHNESS_MS = 2 * 60 * 1000;
+
+export function getDriverFreshnessCutoff() {
+  return new Date(Date.now() - DRIVER_LOCATION_FRESHNESS_MS);
+}
+
 export function getDistanceScoreKm(
   start: { lat: number; lng: number },
   end: { lat: number; lng: number }
@@ -78,7 +84,10 @@ export async function autoAssignRide(rideId: string) {
       where: {
         role: "DRIVER",
         availability: "AVAILABLE",
-        kycStatus: "APPROVED"
+        kycStatus: "APPROVED",
+        lastSeenAt: {
+          gte: getDriverFreshnessCutoff()
+        }
       },
       select: {
         id: true,

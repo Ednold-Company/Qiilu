@@ -892,6 +892,11 @@ export function DriverWalletMobilePage({ userId }: { userId: string }) {
   };
 
   useEffect(() => {
+    const paymentStatus = new URLSearchParams(window.location.search).get("payment");
+    if (paymentStatus === "paystack") {
+      setWalletMessage("Payment approval received. Your wallet will update when Paystack confirms the transaction.");
+    }
+
     void load();
   }, [userId]);
 

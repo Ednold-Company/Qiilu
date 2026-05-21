@@ -279,6 +279,7 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
   const [selfieProvided, setSelfieProvided] = useState(false);
   const [selfieImageUrl, setSelfieImageUrl] = useState("");
   const [capturing, setCapturing] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
   const [consent, setConsent] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -297,10 +298,39 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
     streamRef.current = null;
   }, []);
 
+  const attachCameraStream = async () => {
+    const video = videoRef.current;
+    const stream = streamRef.current;
+
+    if (!video || !stream) {
+      return;
+    }
+
+    if (video.srcObject !== stream) {
+      video.srcObject = stream;
+    }
+
+    try {
+      await video.play();
+      setCameraReady(true);
+      setMessage(null);
+    } catch {
+      setCameraReady(false);
+      setMessage("Camera preview is loading. If it stays blank, allow camera access and try again.");
+    }
+  };
+
+  useEffect(() => {
+    if (capturing) {
+      void attachCameraStream();
+    }
+  }, [capturing]);
+
   const stopCapture = () => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     setCapturing(false);
+    setCameraReady(false);
   };
 
   const handleDocumentSelect = async (file: File) => {
@@ -331,17 +361,14 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
       });
 
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-
-      setCapturing(true);
+      setCameraReady(false);
       setSelfieProvided(false);
       setSelfieImageUrl("");
       setMessage(null);
+      setCapturing(true);
     } catch (error) {
       setCapturing(false);
+      setCameraReady(false);
       setMessage(error instanceof Error ? error.message : "We could not access your camera.");
     }
   };
@@ -350,8 +377,8 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
     const video = videoRef.current;
     const canvas = canvasRef.current;
 
-    if (!video || !canvas) {
-      setMessage("Camera is not ready yet. Please try again.");
+    if (!video || !canvas || !cameraReady || !video.videoWidth || !video.videoHeight) {
+      setMessage("Camera preview is still loading. Please wait a moment and try again.");
       return;
     }
 
@@ -451,7 +478,21 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
           <div className="text-center">
             <div className="relative mx-auto mb-6 h-56 w-56 overflow-hidden rounded-full border-4 border-muted bg-muted/30">
               {capturing ? (
-                <video ref={videoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+                <>
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    onLoadedMetadata={() => void attachCameraStream()}
+                    className="h-full w-full scale-x-[-1] bg-black object-cover"
+                  />
+                  {!cameraReady ? (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/70 px-6 text-center text-sm font-bold text-white">
+                      Starting camera...
+                    </div>
+                  ) : null}
+                </>
               ) : selfieImageUrl ? (
                 <img src={selfieImageUrl} alt="Captured selfie preview" className="h-full w-full object-cover" />
               ) : (
@@ -483,8 +524,8 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
                 </button>
               ) : null}
               {capturing ? (
-                <button type="button" className="rounded-xl bg-primary px-8 py-3 font-bold text-primary-foreground" onClick={captureSelfie}>
-                  Capture Selfie
+                <button type="button" disabled={!cameraReady} className="rounded-xl bg-primary px-8 py-3 font-bold text-primary-foreground disabled:opacity-60" onClick={captureSelfie}>
+                  {cameraReady ? "Capture Selfie" : "Loading Camera..."}
                 </button>
               ) : null}
               {selfieProvided ? (

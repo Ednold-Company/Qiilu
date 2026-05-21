@@ -4,6 +4,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { prisma } from "../lib/prisma.js";
 import { createRideBooking } from "../lib/ride-booking.js";
 import { topUpWallet, WALLET_TOP_UP_MAX_GHS, WALLET_TOP_UP_MIN_GHS } from "../lib/payments.js";
+import { getDriverFreshnessCutoff } from "../lib/dispatch.js";
 import { buildVehicleFareProfile } from "../lib/pricing.js";
 import { realtimeGateway } from "../lib/realtime.js";
 import { estimateRoute, getRoutingStatus } from "../lib/routing.js";
@@ -90,7 +91,10 @@ passengerRouter.get("/vehicle-options", async (_request, response) => {
     where: {
       role: "DRIVER",
       availability: "AVAILABLE",
-      kycStatus: "APPROVED"
+      kycStatus: "APPROVED",
+      lastSeenAt: {
+        gte: getDriverFreshnessCutoff()
+      }
     },
     select: {
       id: true

@@ -38,6 +38,66 @@ supportRouter.post("/incidents", requireAuth, async (request: AuthenticatedReque
   });
 });
 
+supportRouter.post("/incidents/emergency", requireAuth, async (request: AuthenticatedRequest, response) => {
+  const body = request.body as {
+    rideId?: string;
+    lat?: number;
+    lng?: number;
+    note?: string;
+  };
+
+  const ride = body.rideId
+    ? await prisma.ride.findUnique({
+        where: { id: body.rideId },
+        include: {
+          passenger: {
+            select: { id: true, name: true, phone: true }
+          },
+          driver: {
+            select: { id: true, name: true, phone: true }
+          }
+        }
+      })
+    : null;
+
+  if (body.rideId && !ride) {
+    response.status(404).json({ message: "Ride not found for emergency report" });
+    return;
+  }
+
+  if (ride && ride.passengerId !== request.auth!.userId && ride.driverId !== request.auth!.userId) {
+    response.status(403).json({ message: "You can only raise an emergency for your own ride" });
+    return;
+  }
+
+  const locationText =
+    typeof body.lat === "number" && typeof body.lng === "number"
+      ? `Location snapshot: ${body.lat.toFixed(6)}, ${body.lng.toFixed(6)}`
+      : "Location snapshot: unavailable";
+
+  const incident = await prisma.supportIncident.create({
+    data: {
+      rideId: ride?.id,
+      reporterId: request.auth!.userId,
+      category: "EMERGENCY",
+      severity: "CRITICAL",
+      description: [
+        "Emergency button pressed.",
+        body.note?.trim() ? `Note: ${body.note.trim()}` : null,
+        locationText,
+        ride ? `Ride: ${ride.pickup} to ${ride.destination} (${ride.status})` : null,
+        ride?.passenger ? `Passenger: ${ride.passenger.name} ${ride.passenger.phone ?? ""}` : null,
+        ride?.driver ? `Driver: ${ride.driver.name} ${ride.driver.phone ?? ""}` : null
+      ].filter(Boolean).join("\n")
+    }
+  });
+
+  response.status(201).json({
+    message: "Emergency alert submitted to Qiilu safety operations",
+    incident
+  });
+});
+
 supportRouter.get("/incidents", requireAuth, async (request: AuthenticatedRequest, response) => {
   const where =
     request.auth?.role === "ADMIN"

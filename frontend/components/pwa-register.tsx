@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect } from "react";
+import { useState } from "react";
 
 export function PwaRegister() {
+  const [updateMessage, setUpdateMessage] = useState<string | null>(null);
+
   useEffect(() => {
     if (!("serviceWorker" in navigator)) {
       return;
@@ -34,6 +37,8 @@ export function PwaRegister() {
             return;
           }
 
+          setUpdateMessage("Updating Qiilu for the latest fixes...");
+
           installingWorker.addEventListener("statechange", () => {
             if (installingWorker.state === "installed" && navigator.serviceWorker.controller) {
               installingWorker.postMessage({ type: "SKIP_WAITING" });
@@ -52,11 +57,20 @@ export function PwaRegister() {
       }
 
       refreshing = true;
+      setUpdateMessage("Qiilu has been updated. Reloading...");
       window.location.reload();
     });
 
     void register();
   }, []);
 
-  return null;
+  if (!updateMessage) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-x-4 bottom-4 z-[9999] rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white shadow-2xl">
+      {updateMessage}
+    </div>
+  );
 }
