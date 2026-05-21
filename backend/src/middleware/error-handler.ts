@@ -9,6 +9,12 @@ export function errorHandler(
   _next: NextFunction
 ) {
   const requestId = request.requestId ?? "unknown";
+  const errorStatus = typeof error === "object" && error !== null && "status" in error && typeof error.status === "number"
+    ? error.status
+    : null;
+  const errorType = typeof error === "object" && error !== null && "type" in error && typeof error.type === "string"
+    ? error.type
+    : null;
 
   console.error(
     JSON.stringify({
@@ -29,6 +35,14 @@ export function errorHandler(
   });
 
   if (response.headersSent) {
+    return;
+  }
+
+  if (errorStatus === 413 || errorType === "entity.too.large") {
+    response.status(413).json({
+      message: "The uploaded files are too large. Please use clearer but smaller photos and try again.",
+      requestId
+    });
     return;
   }
 

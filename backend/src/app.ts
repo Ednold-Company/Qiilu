@@ -36,8 +36,8 @@ app.use(requestContext);
 app.use(requestLog);
 app.use(rateLimit({ windowMs: 60_000, max: 180 }));
 app.use("/payments/webhooks/paystack", express.raw({ type: "application/json" }), paymentsRouter);
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+app.use(express.json({ limit: "25mb" }));
+app.use(express.urlencoded({ extended: false, limit: "25mb" }));
 
 app.get("/", (_request, response) => {
   response.json({
