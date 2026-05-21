@@ -41,6 +41,8 @@ function formatKycSubmission(submission: {
     legalName: details?.legalName ?? null,
     issuingCountry: details?.issuingCountry ?? null,
     documentBackUrl: details?.documentBackUrl ?? null,
+    selfieProvided: details?.selfieProvided ?? false,
+    selfieImageUrl: details?.selfieImageUrl ?? null,
     reviewerNotes: details?.notes ?? null
   };
 }
@@ -54,6 +56,8 @@ function safeParseKycNotes(notes: string) {
       legalName: typeof parsed.legalName === "string" ? parsed.legalName : null,
       issuingCountry: typeof parsed.issuingCountry === "string" ? parsed.issuingCountry : null,
       documentBackUrl: typeof parsed.documentBackUrl === "string" ? parsed.documentBackUrl : null,
+      selfieProvided: parsed.selfieProvided === true,
+      selfieImageUrl: typeof parsed.selfieImageUrl === "string" ? parsed.selfieImageUrl : null,
       notes: typeof parsed.notes === "string" ? parsed.notes : null
     };
   } catch {
@@ -521,6 +525,8 @@ driverRouter.post("/kyc/:userId", requireAuth, async (request: AuthenticatedRequ
     issuingCountry?: string;
     documentUrl?: string;
     documentBackUrl?: string;
+    selfieProvided?: boolean;
+    selfieImageUrl?: string;
     notes?: string;
   };
 
@@ -573,6 +579,28 @@ driverRouter.post("/kyc/:userId", requireAuth, async (request: AuthenticatedRequ
     return;
   }
 
+  if (!body.selfieProvided) {
+    response.status(400).json({ message: "Selfie verification is required" });
+    return;
+  }
+
+  if (!body.selfieImageUrl?.trim()) {
+    response.status(400).json({ message: "A selfie capture is required" });
+    return;
+  }
+
+  const selfieReference = normalizeDocumentReference(body.selfieImageUrl);
+
+  if (!isValidDocumentReference(selfieReference)) {
+    response.status(400).json({ message: "Upload a valid selfie image" });
+    return;
+  }
+
+  if (isUploadedDocumentTooLarge(selfieReference)) {
+    response.status(400).json({ message: "Selfie upload is too large. Use a smaller file." });
+    return;
+  }
+
   const latestSubmission = await prisma.kycSubmission.findFirst({
     where: { userId: request.params.userId },
     orderBy: { createdAt: "desc" }
@@ -591,6 +619,8 @@ driverRouter.post("/kyc/:userId", requireAuth, async (request: AuthenticatedRequ
     legalName: body.legalName.trim(),
     issuingCountry: body.issuingCountry?.trim() || "Ghana",
     documentBackUrl: documentBackReference,
+    selfieProvided: true,
+    selfieImageUrl: selfieReference,
     notes: body.notes?.trim() || null
   });
 

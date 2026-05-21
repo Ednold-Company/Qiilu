@@ -137,6 +137,8 @@ type DriverKycResponse = {
     documentNumber: string | null;
     legalName: string | null;
     issuingCountry: string | null;
+    selfieProvided: boolean;
+    selfieImageUrl: string | null;
     createdAt: string;
     reviewedAt: string | null;
   } | null;
@@ -149,6 +151,8 @@ type DriverKycResponse = {
     documentNumber: string | null;
     legalName: string | null;
     issuingCountry: string | null;
+    selfieProvided: boolean;
+    selfieImageUrl: string | null;
     createdAt: string;
     reviewedAt: string | null;
   }>;
@@ -1277,12 +1281,15 @@ export function DriverAccountMobilePage({ sessionUser }: { sessionUser: SessionU
   const [documentFileName, setDocumentFileName] = useState<string | null>(null);
   const [documentBackUrl, setDocumentBackUrl] = useState("");
   const [documentBackFileName, setDocumentBackFileName] = useState<string | null>(null);
+  const [selfieImageUrl, setSelfieImageUrl] = useState("");
+  const [selfieFileName, setSelfieFileName] = useState<string | null>(null);
   const [kycMessage, setKycMessage] = useState<string | null>(null);
   const [submittingKyc, setSubmittingKyc] = useState(false);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [uploadingProfileImage, setUploadingProfileImage] = useState(false);
   const kycDocumentInputRef = useRef<HTMLInputElement | null>(null);
   const kycDocumentBackInputRef = useRef<HTMLInputElement | null>(null);
+  const kycSelfieInputRef = useRef<HTMLInputElement | null>(null);
 
   const loadAccount = async () => {
     const [mePayload, walletPayload, kycPayload] = await Promise.all([
@@ -1362,7 +1369,9 @@ export function DriverAccountMobilePage({ sessionUser }: { sessionUser: SessionU
           legalName,
           issuingCountry,
           documentUrl,
-          documentBackUrl
+          documentBackUrl,
+          selfieProvided: Boolean(selfieImageUrl),
+          selfieImageUrl
         })
       });
       setDocumentNumber("");
@@ -1370,6 +1379,8 @@ export function DriverAccountMobilePage({ sessionUser }: { sessionUser: SessionU
       setDocumentFileName(null);
       setDocumentBackUrl("");
       setDocumentBackFileName(null);
+      setSelfieImageUrl("");
+      setSelfieFileName(null);
       await loadAccount();
       setKycMessage("KYC submission received and queued for review.");
     } catch (error) {
@@ -1393,6 +1404,18 @@ export function DriverAccountMobilePage({ sessionUser }: { sessionUser: SessionU
       }
     } catch (error) {
       setKycMessage(error instanceof Error ? error.message : "Could not read the selected document.");
+    }
+  };
+
+  const uploadKycSelfie = async (file: File) => {
+    setKycMessage(null);
+
+    try {
+      const value = await readImageFileAsDataUrl(file);
+      setSelfieImageUrl(value);
+      setSelfieFileName(file.name);
+    } catch (error) {
+      setKycMessage(error instanceof Error ? error.message : "Could not read the selected selfie.");
     }
   };
 
@@ -1514,6 +1537,8 @@ export function DriverAccountMobilePage({ sessionUser }: { sessionUser: SessionU
                     setDocumentFileName(null);
                     setDocumentBackUrl("");
                     setDocumentBackFileName(null);
+                    setSelfieImageUrl("");
+                    setSelfieFileName(null);
                   }}
                   className="h-12 w-full rounded-xl border border-border bg-muted/50 px-4 text-sm outline-none"
                 >
@@ -1585,13 +1610,43 @@ export function DriverAccountMobilePage({ sessionUser }: { sessionUser: SessionU
                   />
                 </div>
               </label>
+              <label className="space-y-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Driver selfie</span>
+                <div className="rounded-xl border border-dashed border-border bg-muted/30 p-4">
+                  <div className="text-sm font-semibold">{selfieFileName ?? "No selfie selected yet"}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">Upload a clear face photo, or use the full KYC workflow for live camera capture.</div>
+                  {selfieImageUrl ? <img src={selfieImageUrl} alt="Driver selfie preview" className="mt-3 h-20 w-20 rounded-2xl object-cover" /> : null}
+                  <button
+                    type="button"
+                    disabled={submittingKyc}
+                    onClick={() => kycSelfieInputRef.current?.click()}
+                    className="mt-3 inline-flex rounded-full bg-primary px-4 py-2 text-xs font-bold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Choose selfie
+                  </button>
+                  <input
+                    ref={kycSelfieInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    disabled={submittingKyc}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) {
+                        void uploadKycSelfie(file);
+                      }
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                </div>
+              </label>
             </div>
 
             {kycMessage ? <div className="mb-4 rounded-xl bg-muted/60 px-4 py-3 text-sm text-muted-foreground">{kycMessage}</div> : null}
 
             <button
               type="button"
-              disabled={submittingKyc || !documentUrl || !documentBackUrl}
+              disabled={submittingKyc || !documentUrl || !documentBackUrl || !selfieImageUrl}
               onClick={() => void submitKyc()}
               className="h-12 w-full rounded-xl bg-primary font-bold text-primary-foreground disabled:opacity-60"
             >
@@ -1626,6 +1681,7 @@ export function DriverAccountMobilePage({ sessionUser }: { sessionUser: SessionU
                       Open front
                     </a>
                     {submission.documentBackUrl ? <a href={submission.documentBackUrl} target="_blank" rel="noreferrer" className="ml-3 mt-3 inline-block text-xs font-bold text-primary">Open back</a> : null}
+                    {submission.selfieImageUrl ? <a href={submission.selfieImageUrl} target="_blank" rel="noreferrer" className="ml-3 mt-3 inline-block text-xs font-bold text-primary">Open selfie</a> : null}
                   </div>
                 ))
               ) : (

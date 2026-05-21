@@ -932,24 +932,24 @@ export default function AdminPage() {
                                 className="min-h-24 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none"
                               />
                             </div>
-                            <div className="flex flex-wrap gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
                               <Link href={submission.documentUrl} target="_blank">
-                                <Button variant="outline" className="rounded-full">Open front</Button>
+                                <Button variant="outline" className="h-9 w-auto flex-none rounded-full px-3 text-xs">Open front</Button>
                               </Link>
                               {details?.documentBackUrl ? (
                                 <Link href={details.documentBackUrl} target="_blank">
-                                  <Button variant="outline" className="rounded-full">Open back</Button>
+                                  <Button variant="outline" className="h-9 w-auto flex-none rounded-full px-3 text-xs">Open back</Button>
                                 </Link>
                               ) : null}
                               {details?.selfieImageUrl ? (
                                 <Link href={details.selfieImageUrl} target="_blank">
-                                  <Button variant="outline" className="rounded-full">Open selfie</Button>
+                                  <Button variant="outline" className="h-9 w-auto flex-none rounded-full px-3 text-xs">Open selfie</Button>
                                 </Link>
                               ) : null}
-                              <Button variant="outline" className="rounded-full" onClick={() => reviewKyc(submission.id, "REJECTED")}>
+                              <Button variant="outline" className="h-9 w-auto flex-none rounded-full px-4 text-xs" onClick={() => reviewKyc(submission.id, "REJECTED")}>
                                 Reject
                               </Button>
-                              <Button className="rounded-full" onClick={() => reviewKyc(submission.id, "APPROVED")}>
+                              <Button className="h-9 w-auto flex-none rounded-full px-4 text-xs" onClick={() => reviewKyc(submission.id, "APPROVED")}>
                                 Approve
                               </Button>
                             </div>
