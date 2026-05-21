@@ -6,7 +6,6 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Qiilu",
   description: "African-first ride hailing platform for passengers and drivers.",
-  manifest: "/manifest.webmanifest",
   applicationName: "Qiilu",
   appleWebApp: {
     capable: true,

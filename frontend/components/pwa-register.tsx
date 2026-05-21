@@ -2,9 +2,27 @@
 
 import { useEffect } from "react";
 import { useState } from "react";
+import { usePathname } from "next/navigation";
 
 export function PwaRegister() {
   const [updateMessage, setUpdateMessage] = useState<string | null>(null);
+  const pathname = usePathname();
+
+  useEffect(() => {
+    const manifestHref = pathname?.startsWith("/admin")
+      ? "/admin/manifest.webmanifest"
+      : "/manifest.webmanifest";
+    let manifestLink = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
+
+    if (!manifestLink) {
+      manifestLink = document.createElement("link");
+      manifestLink.rel = "manifest";
+      document.head.appendChild(manifestLink);
+    }
+
+    manifestLink.dataset.qiiluManifest = "true";
+    manifestLink.href = manifestHref;
+  }, [pathname]);
 
   useEffect(() => {
     if (!("serviceWorker" in navigator)) {
