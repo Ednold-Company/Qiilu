@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PassengerScreen } from "@/components/qiilu/passenger";
 import { getSession, type AuthSession, type SessionUser } from "@/lib/auth-session";
+import { RouteLoadingScreen } from "@/components/responsive-route";
 
 export default function PassengerPage() {
   const router = useRouter();
@@ -23,7 +24,7 @@ export default function PassengerPage() {
   }, [router]);
 
   if (!user || !token) {
-    return null;
+    return <RouteLoadingScreen label="Opening passenger app..." />;
   }
 
   return <PassengerScreen user={user} token={token} />;

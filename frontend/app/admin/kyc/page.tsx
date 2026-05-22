@@ -133,6 +133,10 @@ export default function AdminKycPage() {
                         No selfie captured yet
                       </div>
                     )}
+                    <div className="mt-2 rounded-xl bg-background px-3 py-2 text-xs text-muted-foreground">
+                      Movement: {details?.movementCheckPassed ? "Passed" : "Missing"}
+                      {details?.movementCheckPrompt ? ` - ${details.movementCheckPrompt}` : ""}
+                    </div>
                   </div>
                 </div>
                 {details?.notes ? <p className="mb-4 text-sm text-muted-foreground">{details.notes}</p> : null}

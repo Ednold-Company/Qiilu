@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { DriverFavouritesMobilePage } from "@/components/qiilu/driver-mobile-routes";
 import { DriverFavouritesDesktopPage } from "@/components/qiilu/driver-desktop-routes";
 import { getSession, type SessionUser } from "@/lib/auth-session";
+import { ResponsiveRoute, RouteLoadingScreen } from "@/components/responsive-route";
 
 export default function DriverFavouritesPage() {
   const router = useRouter();
@@ -22,15 +23,14 @@ export default function DriverFavouritesPage() {
   }, [router]);
 
   if (!user) {
-    return null;
+    return <RouteLoadingScreen label="Opening driver favourites..." />;
   }
 
   return (
-    <>
-      <DriverFavouritesDesktopPage user={user} />
-      <div className="lg:hidden">
-        <DriverFavouritesMobilePage />
-      </div>
-    </>
+    <ResponsiveRoute
+      loadingLabel="Opening driver favourites..."
+      desktop={() => <DriverFavouritesDesktopPage user={user} />}
+      mobile={() => <DriverFavouritesMobilePage />}
+    />
   );
 }

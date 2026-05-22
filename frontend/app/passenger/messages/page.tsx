@@ -5,17 +5,17 @@ import {
   PassengerMessagesDesktopLive,
   PassengerMessagesMobileLive
 } from "@/components/qiilu/ride-chat";
+import { ResponsiveRoute } from "@/components/responsive-route";
 
 export default function PassengerMessagesPage() {
   return (
     <PassengerGuard>
       {({ user }) => (
-        <>
-          <PassengerMessagesDesktopLive user={user} />
-          <div className="lg:hidden">
-            <PassengerMessagesMobileLive user={user} />
-          </div>
-        </>
+        <ResponsiveRoute
+          loadingLabel="Opening messages..."
+          desktop={() => <PassengerMessagesDesktopLive user={user} />}
+          mobile={() => <PassengerMessagesMobileLive user={user} />}
+        />
       )}
     </PassengerGuard>
   );

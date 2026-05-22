@@ -139,6 +139,8 @@ type DriverKycResponse = {
     issuingCountry: string | null;
     selfieProvided: boolean;
     selfieImageUrl: string | null;
+    movementCheckPassed: boolean;
+    movementCheckPrompt: string | null;
     createdAt: string;
     reviewedAt: string | null;
   } | null;
@@ -153,11 +155,15 @@ type DriverKycResponse = {
     issuingCountry: string | null;
     selfieProvided: boolean;
     selfieImageUrl: string | null;
+    movementCheckPassed: boolean;
+    movementCheckPrompt: string | null;
     createdAt: string;
     reviewedAt: string | null;
   }>;
   requiredDocuments: string[];
 };
+
+const DRIVER_KYC_MOVEMENT_PROMPT = "Turn head left, then right before selfie upload";
 
 type ShellProps = {
   title: string;
@@ -1283,6 +1289,7 @@ export function DriverAccountMobilePage({ sessionUser }: { sessionUser: SessionU
   const [documentBackFileName, setDocumentBackFileName] = useState<string | null>(null);
   const [selfieImageUrl, setSelfieImageUrl] = useState("");
   const [selfieFileName, setSelfieFileName] = useState<string | null>(null);
+  const [movementCheckPassed, setMovementCheckPassed] = useState(false);
   const [kycMessage, setKycMessage] = useState<string | null>(null);
   const [submittingKyc, setSubmittingKyc] = useState(false);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
@@ -1371,7 +1378,9 @@ export function DriverAccountMobilePage({ sessionUser }: { sessionUser: SessionU
           documentUrl,
           documentBackUrl,
           selfieProvided: Boolean(selfieImageUrl),
-          selfieImageUrl
+          selfieImageUrl,
+          movementCheckPassed,
+          movementCheckPrompt: DRIVER_KYC_MOVEMENT_PROMPT
         })
       });
       setDocumentNumber("");
@@ -1381,6 +1390,7 @@ export function DriverAccountMobilePage({ sessionUser }: { sessionUser: SessionU
       setDocumentBackFileName(null);
       setSelfieImageUrl("");
       setSelfieFileName(null);
+      setMovementCheckPassed(false);
       await loadAccount();
       setKycMessage("KYC submission received and queued for review.");
     } catch (error) {
@@ -1414,6 +1424,7 @@ export function DriverAccountMobilePage({ sessionUser }: { sessionUser: SessionU
       const value = await readImageFileAsDataUrl(file);
       setSelfieImageUrl(value);
       setSelfieFileName(file.name);
+      setMovementCheckPassed(false);
     } catch (error) {
       setKycMessage(error instanceof Error ? error.message : "Could not read the selected selfie.");
     }
@@ -1539,6 +1550,7 @@ export function DriverAccountMobilePage({ sessionUser }: { sessionUser: SessionU
                     setDocumentBackFileName(null);
                     setSelfieImageUrl("");
                     setSelfieFileName(null);
+                    setMovementCheckPassed(false);
                   }}
                   className="h-12 w-full rounded-xl border border-border bg-muted/50 px-4 text-sm outline-none"
                 >
@@ -1616,6 +1628,15 @@ export function DriverAccountMobilePage({ sessionUser }: { sessionUser: SessionU
                   <div className="text-sm font-semibold">{selfieFileName ?? "No selfie selected yet"}</div>
                   <div className="mt-1 text-xs text-muted-foreground">Upload a clear face photo, or use the full KYC workflow for live camera capture.</div>
                   {selfieImageUrl ? <img src={selfieImageUrl} alt="Driver selfie preview" className="mt-3 h-20 w-20 rounded-2xl object-cover" /> : null}
+                  <label className="mt-3 flex items-start gap-2 rounded-xl bg-background/70 p-3 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={movementCheckPassed}
+                      onChange={(event) => setMovementCheckPassed(event.target.checked)}
+                      className="mt-0.5 h-4 w-4"
+                    />
+                    <span>I turned my head left and right before taking this selfie.</span>
+                  </label>
                   <button
                     type="button"
                     disabled={submittingKyc}
@@ -1646,7 +1667,7 @@ export function DriverAccountMobilePage({ sessionUser }: { sessionUser: SessionU
 
             <button
               type="button"
-              disabled={submittingKyc || !documentUrl || !documentBackUrl || !selfieImageUrl}
+              disabled={submittingKyc || !documentUrl || !documentBackUrl || !selfieImageUrl || !movementCheckPassed}
               onClick={() => void submitKyc()}
               className="h-12 w-full rounded-xl bg-primary font-bold text-primary-foreground disabled:opacity-60"
             >

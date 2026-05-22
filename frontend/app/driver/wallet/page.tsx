@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { DriverWalletMobilePage } from "@/components/qiilu/driver-mobile-routes";
 import { DriverWalletDesktopPage } from "@/components/qiilu/driver-desktop-routes";
 import { getSession, type SessionUser } from "@/lib/auth-session";
+import { ResponsiveRoute, RouteLoadingScreen } from "@/components/responsive-route";
 
 export default function DriverWalletPage() {
   const router = useRouter();
@@ -22,15 +23,14 @@ export default function DriverWalletPage() {
   }, [router]);
 
   if (!user) {
-    return null;
+    return <RouteLoadingScreen label="Opening driver wallet..." />;
   }
 
   return (
-    <>
-      <DriverWalletDesktopPage user={user} />
-      <div className="lg:hidden">
-        <DriverWalletMobilePage userId={user.id} />
-      </div>
-    </>
+    <ResponsiveRoute
+      loadingLabel="Opening driver wallet..."
+      desktop={() => <DriverWalletDesktopPage user={user} />}
+      mobile={() => <DriverWalletMobilePage userId={user.id} />}
+    />
   );
 }

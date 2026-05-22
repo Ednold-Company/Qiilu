@@ -81,10 +81,23 @@ export function parseKycNotes(notes: string | null) {
       documentBackUrl: typeof parsed.documentBackUrl === "string" ? parsed.documentBackUrl : null,
       selfieProvided: parsed.selfieProvided === true,
       selfieImageUrl: typeof parsed.selfieImageUrl === "string" ? parsed.selfieImageUrl : null,
+      movementCheckPassed: parsed.movementCheckPassed === true,
+      movementCheckPrompt: typeof parsed.movementCheckPrompt === "string" ? parsed.movementCheckPrompt : null,
       notes: typeof parsed.notes === "string" ? parsed.notes : null
     };
   } catch {
-    return { notes };
+    return {
+      documentType: null,
+      documentNumber: null,
+      legalName: null,
+      issuingCountry: null,
+      documentBackUrl: null,
+      selfieProvided: false,
+      selfieImageUrl: null,
+      movementCheckPassed: false,
+      movementCheckPrompt: null,
+      notes
+    };
   }
 }
 

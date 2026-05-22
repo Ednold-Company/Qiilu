@@ -43,6 +43,8 @@ function formatKycSubmission(submission: {
     documentBackUrl: details?.documentBackUrl ?? null,
     selfieProvided: details?.selfieProvided ?? false,
     selfieImageUrl: details?.selfieImageUrl ?? null,
+    movementCheckPassed: details?.movementCheckPassed ?? false,
+    movementCheckPrompt: details?.movementCheckPrompt ?? null,
     reviewerNotes: details?.notes ?? null
   };
 }
@@ -58,6 +60,8 @@ function safeParseKycNotes(notes: string) {
       documentBackUrl: typeof parsed.documentBackUrl === "string" ? parsed.documentBackUrl : null,
       selfieProvided: parsed.selfieProvided === true,
       selfieImageUrl: typeof parsed.selfieImageUrl === "string" ? parsed.selfieImageUrl : null,
+      movementCheckPassed: parsed.movementCheckPassed === true,
+      movementCheckPrompt: typeof parsed.movementCheckPrompt === "string" ? parsed.movementCheckPrompt : null,
       notes: typeof parsed.notes === "string" ? parsed.notes : null
     };
   } catch {
@@ -527,6 +531,8 @@ driverRouter.post("/kyc/:userId", requireAuth, async (request: AuthenticatedRequ
     documentBackUrl?: string;
     selfieProvided?: boolean;
     selfieImageUrl?: string;
+    movementCheckPassed?: boolean;
+    movementCheckPrompt?: string;
     notes?: string;
   };
 
@@ -601,6 +607,11 @@ driverRouter.post("/kyc/:userId", requireAuth, async (request: AuthenticatedRequ
     return;
   }
 
+  if (!body.movementCheckPassed) {
+    response.status(400).json({ message: "Complete the selfie movement check before submitting KYC" });
+    return;
+  }
+
   const latestSubmission = await prisma.kycSubmission.findFirst({
     where: { userId: request.params.userId },
     orderBy: { createdAt: "desc" }
@@ -621,6 +632,8 @@ driverRouter.post("/kyc/:userId", requireAuth, async (request: AuthenticatedRequ
     documentBackUrl: documentBackReference,
     selfieProvided: true,
     selfieImageUrl: selfieReference,
+    movementCheckPassed: true,
+    movementCheckPrompt: body.movementCheckPrompt?.trim() || "Turn head left, then right before capture",
     notes: body.notes?.trim() || null
   });
 

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DriverKycDesktopPage, DriverKycMobilePage } from "@/components/qiilu/kyc-pages";
 import { getSession, type SessionUser } from "@/lib/auth-session";
+import { ResponsiveRoute, RouteLoadingScreen } from "@/components/responsive-route";
 
 export default function DriverKycPage() {
   const router = useRouter();
@@ -19,17 +20,14 @@ export default function DriverKycPage() {
   }, [router]);
 
   if (!user) {
-    return null;
+    return <RouteLoadingScreen label="Opening driver KYC..." />;
   }
 
   return (
-    <>
-      <div className="hidden lg:block">
-        <DriverKycDesktopPage user={user} />
-      </div>
-      <div className="lg:hidden">
-        <DriverKycMobilePage user={user} />
-      </div>
-    </>
+    <ResponsiveRoute
+      loadingLabel="Opening driver KYC..."
+      desktop={() => <DriverKycDesktopPage user={user} />}
+      mobile={() => <DriverKycMobilePage user={user} />}
+    />
   );
 }

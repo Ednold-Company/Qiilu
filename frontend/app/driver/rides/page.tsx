@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { DriverRidesMobilePage } from "@/components/qiilu/driver-mobile-routes";
 import { DriverRidesDesktopPage } from "@/components/qiilu/driver-desktop-routes";
 import { getSession, type SessionUser } from "@/lib/auth-session";
+import { ResponsiveRoute, RouteLoadingScreen } from "@/components/responsive-route";
 
 export default function DriverRidesPage() {
   const router = useRouter();
@@ -22,15 +23,14 @@ export default function DriverRidesPage() {
   }, [router]);
 
   if (!user) {
-    return null;
+    return <RouteLoadingScreen label="Opening driver rides..." />;
   }
 
   return (
-    <>
-      <DriverRidesDesktopPage user={user} />
-      <div className="lg:hidden">
-        <DriverRidesMobilePage userId={user.id} />
-      </div>
-    </>
+    <ResponsiveRoute
+      loadingLabel="Opening driver rides..."
+      desktop={() => <DriverRidesDesktopPage user={user} />}
+      mobile={() => <DriverRidesMobilePage userId={user.id} />}
+    />
   );
 }

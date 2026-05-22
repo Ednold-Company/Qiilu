@@ -13,19 +13,21 @@ import { readDocumentFileAsDataUrl } from "@/lib/document-upload";
 
 type DriverKycResponse = {
   kycStatus: "PENDING" | "APPROVED" | "REJECTED";
-  latestSubmission: { status: "PENDING" | "APPROVED" | "REJECTED"; documentType: string | null; documentNumber: string | null; legalName: string | null; documentUrl: string; documentBackUrl: string | null; selfieProvided: boolean; selfieImageUrl: string | null; reviewerNotes: string | null; createdAt: string } | null;
-  submissions: Array<{ id: string; status: "PENDING" | "APPROVED" | "REJECTED"; documentType: string | null; documentNumber: string | null; documentUrl: string; documentBackUrl: string | null; selfieProvided: boolean; selfieImageUrl: string | null; reviewerNotes: string | null; createdAt: string }>;
+  latestSubmission: { status: "PENDING" | "APPROVED" | "REJECTED"; documentType: string | null; documentNumber: string | null; legalName: string | null; documentUrl: string; documentBackUrl: string | null; selfieProvided: boolean; selfieImageUrl: string | null; movementCheckPassed: boolean; movementCheckPrompt: string | null; reviewerNotes: string | null; createdAt: string } | null;
+  submissions: Array<{ id: string; status: "PENDING" | "APPROVED" | "REJECTED"; documentType: string | null; documentNumber: string | null; documentUrl: string; documentBackUrl: string | null; selfieProvided: boolean; selfieImageUrl: string | null; movementCheckPassed: boolean; movementCheckPrompt: string | null; reviewerNotes: string | null; createdAt: string }>;
   requiredDocuments: string[];
 };
 
 type PassengerKycResponse = {
   kycStatus: "PENDING" | "APPROVED" | "REJECTED";
-  latestSubmission: { status: "PENDING" | "APPROVED" | "REJECTED"; documentType: string | null; documentNumber: string | null; legalName: string | null; documentUrl: string; documentBackUrl: string | null; selfieProvided: boolean; selfieImageUrl: string | null; reviewerNotes: string | null; createdAt: string } | null;
-  submissions: Array<{ id: string; status: "PENDING" | "APPROVED" | "REJECTED"; documentType: string | null; documentNumber: string | null; documentUrl: string; documentBackUrl: string | null; selfieProvided: boolean; selfieImageUrl: string | null; reviewerNotes: string | null; createdAt: string }>;
+  latestSubmission: { status: "PENDING" | "APPROVED" | "REJECTED"; documentType: string | null; documentNumber: string | null; legalName: string | null; documentUrl: string; documentBackUrl: string | null; selfieProvided: boolean; selfieImageUrl: string | null; movementCheckPassed: boolean; movementCheckPrompt: string | null; reviewerNotes: string | null; createdAt: string } | null;
+  submissions: Array<{ id: string; status: "PENDING" | "APPROVED" | "REJECTED"; documentType: string | null; documentNumber: string | null; documentUrl: string; documentBackUrl: string | null; selfieProvided: boolean; selfieImageUrl: string | null; movementCheckPassed: boolean; movementCheckPrompt: string | null; reviewerNotes: string | null; createdAt: string }>;
   requiredDocuments: string[];
 };
 
 type DocumentSide = "front" | "back";
+
+const KYC_MOVEMENT_PROMPT = "Turn your head left, then right before capturing";
 
 function statusTone(status: "PENDING" | "APPROVED" | "REJECTED") {
   if (status === "APPROVED") return "bg-secondary/10 text-secondary";
@@ -147,6 +149,7 @@ function DriverKycContent({ user, compact }: { user: SessionUser; compact: boole
   const [documentBackFileName, setDocumentBackFileName] = useState<string | null>(null);
   const [selfieProvided, setSelfieProvided] = useState(false);
   const [selfieImageUrl, setSelfieImageUrl] = useState("");
+  const [movementCheckPassed, setMovementCheckPassed] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [consent, setConsent] = useState(false);
@@ -247,6 +250,7 @@ function DriverKycContent({ user, compact }: { user: SessionUser; compact: boole
       setCameraReady(false);
       setSelfieProvided(false);
       setSelfieImageUrl("");
+      setMovementCheckPassed(false);
       setMessage(null);
       setCapturing(true);
     } catch (error) {
@@ -283,6 +287,7 @@ function DriverKycContent({ user, compact }: { user: SessionUser; compact: boole
   const retakeSelfie = () => {
     setSelfieProvided(false);
     setSelfieImageUrl("");
+    setMovementCheckPassed(false);
     void startCapture();
   };
 
@@ -292,7 +297,7 @@ function DriverKycContent({ user, compact }: { user: SessionUser; compact: boole
     try {
       await fetchJson(`/driver/kyc/${user.id}`, {
         method: "POST",
-        body: JSON.stringify({ documentType, documentNumber, legalName, issuingCountry, documentUrl, documentBackUrl, selfieProvided, selfieImageUrl })
+        body: JSON.stringify({ documentType, documentNumber, legalName, issuingCountry, documentUrl, documentBackUrl, selfieProvided, selfieImageUrl, movementCheckPassed, movementCheckPrompt: KYC_MOVEMENT_PROMPT })
       });
       await load();
       setStep(5);
@@ -398,6 +403,20 @@ function DriverKycContent({ user, compact }: { user: SessionUser; compact: boole
             <div className="mb-6 text-sm text-muted-foreground">
               This helps admins compare the live driver selfie with the uploaded identity document before dispatch is enabled.
             </div>
+            <div className="mx-auto mb-6 max-w-md rounded-2xl border border-border bg-muted/30 p-4 text-left">
+              <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Movement check</div>
+              <div className="mt-2 text-sm font-semibold">{KYC_MOVEMENT_PROMPT}</div>
+              <button
+                type="button"
+                disabled={!cameraReady || !capturing}
+                onClick={() => setMovementCheckPassed(true)}
+                className={`mt-3 rounded-full px-4 py-2 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-60 ${
+                  movementCheckPassed ? "bg-secondary text-secondary-foreground" : "bg-primary text-primary-foreground"
+                }`}
+              >
+                {movementCheckPassed ? "Movement confirmed" : "I completed the movement"}
+              </button>
+            </div>
             {message ? <div className="mb-6 rounded-xl bg-muted/60 px-4 py-3 text-sm text-muted-foreground">{message}</div> : null}
             <div className="flex items-center justify-between">
               <button
@@ -414,8 +433,8 @@ function DriverKycContent({ user, compact }: { user: SessionUser; compact: boole
                 </button>
               ) : null}
               {capturing ? (
-                <button type="button" disabled={!cameraReady} className="rounded-xl bg-primary px-8 py-3 font-bold text-primary-foreground disabled:opacity-60" onClick={captureSelfie}>
-                  {cameraReady ? "Capture Selfie" : "Loading Camera..."}
+                <button type="button" disabled={!cameraReady || !movementCheckPassed} className="rounded-xl bg-primary px-8 py-3 font-bold text-primary-foreground disabled:opacity-60" onClick={captureSelfie}>
+                  {!cameraReady ? "Loading Camera..." : movementCheckPassed ? "Capture Selfie" : "Complete Movement First"}
                 </button>
               ) : null}
               {selfieProvided ? (
@@ -445,6 +464,9 @@ function DriverKycContent({ user, compact }: { user: SessionUser; compact: boole
             <div className="rounded-xl bg-muted/30 p-4">
               <div className="mb-2 text-sm font-bold uppercase tracking-wider text-muted-foreground">Selfie Check</div>
               <div className="text-sm font-medium">{selfieProvided ? "Completed" : "Missing"}</div>
+              <div className="mt-2 text-xs text-muted-foreground">
+                Movement: {movementCheckPassed ? KYC_MOVEMENT_PROMPT : "Not completed"}
+              </div>
               {selfieImageUrl ? <img src={selfieImageUrl} alt="Driver selfie review preview" className="mt-3 h-20 w-20 rounded-2xl object-cover" /> : null}
               <button type="button" className="mt-3 text-sm font-bold text-primary" onClick={() => setStep(3)}>Retake selfie</button>
             </div>
@@ -452,7 +474,7 @@ function DriverKycContent({ user, compact }: { user: SessionUser; compact: boole
             {message ? <div className="rounded-xl bg-muted/60 px-4 py-3 text-sm text-muted-foreground">{message}</div> : null}
             <div className="flex items-center justify-between">
               <button type="button" className="flex items-center text-muted-foreground" onClick={() => setStep(3)}><ChevronLeft className="mr-2 h-4 w-4" /> Back</button>
-              <button type="button" disabled={!consent || !documentNumber || !documentUrl || !documentBackUrl || !selfieProvided || submitting} onClick={() => void submit()} className="rounded-xl bg-primary px-8 py-3 font-bold text-primary-foreground disabled:opacity-60">{submitting ? "Submitting..." : "Submit Application"}</button>
+              <button type="button" disabled={!consent || !documentNumber || !documentUrl || !documentBackUrl || !selfieProvided || !movementCheckPassed || submitting} onClick={() => void submit()} className="rounded-xl bg-primary px-8 py-3 font-bold text-primary-foreground disabled:opacity-60">{submitting ? "Submitting..." : "Submit Application"}</button>
             </div>
           </div>
         ) : null}
@@ -498,6 +520,7 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
   const [documentBackFileName, setDocumentBackFileName] = useState<string | null>(null);
   const [selfieProvided, setSelfieProvided] = useState(false);
   const [selfieImageUrl, setSelfieImageUrl] = useState("");
+  const [movementCheckPassed, setMovementCheckPassed] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [consent, setConsent] = useState(false);
@@ -598,6 +621,7 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
       setCameraReady(false);
       setSelfieProvided(false);
       setSelfieImageUrl("");
+      setMovementCheckPassed(false);
       setMessage(null);
       setCapturing(true);
     } catch (error) {
@@ -637,6 +661,7 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
   const retakeSelfie = () => {
     setSelfieProvided(false);
     setSelfieImageUrl("");
+    setMovementCheckPassed(false);
     void startCapture();
   };
 
@@ -646,7 +671,7 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
     try {
       await fetchJson(`/passenger/kyc/${user.id}`, {
         method: "POST",
-        body: JSON.stringify({ documentType, documentNumber, legalName, documentUrl, documentBackUrl, selfieProvided, selfieImageUrl })
+        body: JSON.stringify({ documentType, documentNumber, legalName, documentUrl, documentBackUrl, selfieProvided, selfieImageUrl, movementCheckPassed, movementCheckPrompt: KYC_MOVEMENT_PROMPT })
       });
       await load();
       setStep(4);
@@ -751,6 +776,20 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
             <div className="mb-6 text-sm text-muted-foreground">
               Use the front camera in a well-lit area so your face is clearly visible.
             </div>
+            <div className="mx-auto mb-6 max-w-md rounded-2xl border border-border bg-muted/30 p-4 text-left">
+              <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Movement check</div>
+              <div className="mt-2 text-sm font-semibold">{KYC_MOVEMENT_PROMPT}</div>
+              <button
+                type="button"
+                disabled={!cameraReady || !capturing}
+                onClick={() => setMovementCheckPassed(true)}
+                className={`mt-3 rounded-full px-4 py-2 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-60 ${
+                  movementCheckPassed ? "bg-secondary text-secondary-foreground" : "bg-primary text-primary-foreground"
+                }`}
+              >
+                {movementCheckPassed ? "Movement confirmed" : "I completed the movement"}
+              </button>
+            </div>
             {message ? <div className="mb-6 rounded-xl bg-muted/60 px-4 py-3 text-sm text-muted-foreground">{message}</div> : null}
             <div className="flex items-center justify-between">
               <button
@@ -767,8 +806,8 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
                 </button>
               ) : null}
               {capturing ? (
-                <button type="button" disabled={!cameraReady} className="rounded-xl bg-primary px-8 py-3 font-bold text-primary-foreground disabled:opacity-60" onClick={captureSelfie}>
-                  {cameraReady ? "Capture Selfie" : "Loading Camera..."}
+                <button type="button" disabled={!cameraReady || !movementCheckPassed} className="rounded-xl bg-primary px-8 py-3 font-bold text-primary-foreground disabled:opacity-60" onClick={captureSelfie}>
+                  {!cameraReady ? "Loading Camera..." : movementCheckPassed ? "Capture Selfie" : "Complete Movement First"}
                 </button>
               ) : null}
               {selfieProvided ? (
@@ -809,6 +848,9 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
               <div className="rounded-xl bg-muted/30 p-4">
                 <div className="mb-2 text-sm font-bold uppercase tracking-wider text-muted-foreground">Selfie Check</div>
                 <div className="text-sm font-medium">{selfieProvided ? "Completed" : "Missing"}</div>
+                <div className="mt-2 text-xs text-muted-foreground">
+                  Movement: {movementCheckPassed ? KYC_MOVEMENT_PROMPT : "Not completed"}
+                </div>
                 {selfieImageUrl ? <img src={selfieImageUrl} alt="Selfie review preview" className="mt-3 h-20 w-20 rounded-2xl object-cover" /> : null}
               </div>
             </div>
@@ -816,7 +858,7 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
             {message ? <div className="mb-6 rounded-xl bg-muted/60 px-4 py-3 text-sm text-muted-foreground">{message}</div> : null}
             <div className="flex items-center justify-between">
               <button type="button" className="flex items-center text-muted-foreground" onClick={() => setStep(3)}><ChevronLeft className="mr-2 h-4 w-4" /> Back</button>
-              <button type="button" disabled={!consent || !documentNumber || !documentUrl || !documentBackUrl || !selfieProvided || submitting} onClick={() => void submit()} className="rounded-xl bg-primary px-8 py-3 font-bold text-primary-foreground disabled:opacity-60">{submitting ? "Submitting..." : "Submit for Verification"}</button>
+              <button type="button" disabled={!consent || !documentNumber || !documentUrl || !documentBackUrl || !selfieProvided || !movementCheckPassed || submitting} onClick={() => void submit()} className="rounded-xl bg-primary px-8 py-3 font-bold text-primary-foreground disabled:opacity-60">{submitting ? "Submitting..." : "Submit for Verification"}</button>
             </div>
             {(payload?.submissions ?? []).length ? <div className="mt-6 space-y-3">{payload!.submissions.map((submission) => <div key={submission.id} className="flex items-center justify-between rounded-xl border border-border p-4"><div><div className="font-bold">{submission.documentType?.replaceAll("_", " ") ?? "Document"}</div><div className="text-xs text-muted-foreground">{submission.documentNumber ?? "No number"} • {new Date(submission.createdAt).toLocaleString()}</div></div><span className={`rounded-full px-3 py-1 text-xs font-bold uppercase ${statusTone(submission.status)}`}>{submission.status}</span></div>)}</div> : null}
           </div>
