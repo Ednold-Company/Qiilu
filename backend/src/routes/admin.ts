@@ -3,6 +3,7 @@ import {
   IncidentStatus,
   KycSubmissionStatus,
   PayoutStatus,
+  Prisma,
   RideStatus
 } from "@prisma/client";
 import { getAdminMetricsHistory } from "../lib/admin-metrics.js";
@@ -38,6 +39,52 @@ function mergeKycReviewNotes(existingNotes: string | null, reviewerNotes?: strin
     });
   } catch {
     return trimmedReviewerNotes ?? existingNotes;
+  }
+}
+
+function parseKycArchiveDetails(notes: string | null) {
+  if (!notes) {
+    return {
+      documentBackUrl: null,
+      selfieImageUrl: null,
+      movementCheckPassed: false,
+      movementCheckPrompt: null,
+      documentType: null,
+      documentNumber: null,
+      legalName: null,
+      issuingCountry: null,
+      reviewerNotes: null,
+      metadata: null
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(notes) as Record<string, unknown>;
+    return {
+      documentBackUrl: typeof parsed.documentBackUrl === "string" ? parsed.documentBackUrl : null,
+      selfieImageUrl: typeof parsed.selfieImageUrl === "string" ? parsed.selfieImageUrl : null,
+      movementCheckPassed: parsed.movementCheckPassed === true,
+      movementCheckPrompt: typeof parsed.movementCheckPrompt === "string" ? parsed.movementCheckPrompt : null,
+      documentType: typeof parsed.documentType === "string" ? parsed.documentType : null,
+      documentNumber: typeof parsed.documentNumber === "string" ? parsed.documentNumber : null,
+      legalName: typeof parsed.legalName === "string" ? parsed.legalName : null,
+      issuingCountry: typeof parsed.issuingCountry === "string" ? parsed.issuingCountry : null,
+      reviewerNotes: typeof parsed.notes === "string" ? parsed.notes : null,
+      metadata: parsed
+    };
+  } catch {
+    return {
+      documentBackUrl: null,
+      selfieImageUrl: null,
+      movementCheckPassed: false,
+      movementCheckPrompt: null,
+      documentType: null,
+      documentNumber: null,
+      legalName: null,
+      issuingCountry: null,
+      reviewerNotes: notes,
+      metadata: { rawNotes: notes }
+    };
   }
 }
 
@@ -174,6 +221,22 @@ adminRouter.get("/kyc", async (_request: AuthenticatedRequest, response) => {
   response.json({ submissions });
 });
 
+adminRouter.get("/kyc/archive", async (request: AuthenticatedRequest, response) => {
+  const rawLimit = request.query.limit;
+  const limitText = Array.isArray(rawLimit)
+    ? (typeof rawLimit[0] === "string" ? rawLimit[0] : undefined)
+    : (typeof rawLimit === "string" ? rawLimit : undefined);
+  const limitValue = Number.parseInt(limitText ?? "", 10);
+  const take = Number.isFinite(limitValue) ? Math.min(Math.max(limitValue, 1), 100) : 50;
+
+  const archives = await prisma.kycArchive.findMany({
+    orderBy: { reviewedAt: "desc" },
+    take
+  });
+
+  response.json({ archives });
+});
+
 adminRouter.post("/kyc/:submissionId/review", async (request: AuthenticatedRequest, response) => {
   const body = request.body as {
     status?: "APPROVED" | "REJECTED";
@@ -185,6 +248,7 @@ adminRouter.post("/kyc/:submissionId/review", async (request: AuthenticatedReque
     return;
   }
 
+  const reviewStatus = body.status === "APPROVED" ? KycSubmissionStatus.APPROVED : KycSubmissionStatus.REJECTED;
   const submissionId = getParam(request.params.submissionId);
 
   if (!submissionId) {
@@ -197,7 +261,13 @@ adminRouter.post("/kyc/:submissionId/review", async (request: AuthenticatedReque
     select: {
       id: true,
       userId: true,
-      notes: true
+      documentUrl: true,
+      notes: true,
+      user: {
+        select: {
+          role: true
+        }
+      }
     }
   });
 
@@ -206,21 +276,70 @@ adminRouter.post("/kyc/:submissionId/review", async (request: AuthenticatedReque
     return;
   }
 
-  const submission = await prisma.kycSubmission.update({
-    where: { id: submissionId },
-    data: {
-      status: body.status,
-      notes: mergeKycReviewNotes(existingSubmission.notes, body.notes),
-      reviewedAt: new Date(),
-      reviewedBy: request.auth!.userId
-    }
-  });
+  const reviewedAt = new Date();
+  const reviewedBy = request.auth!.userId;
+  const mergedNotes = mergeKycReviewNotes(existingSubmission.notes, body.notes);
+  const archiveDetails = parseKycArchiveDetails(mergedNotes);
+  const archiveMetadata = archiveDetails.metadata ? (archiveDetails.metadata as Prisma.InputJsonValue) : undefined;
 
-  await prisma.user.update({
-    where: { id: existingSubmission.userId },
-    data: {
-      kycStatus: body.status
-    }
+  const submission = await prisma.$transaction(async (transaction) => {
+    const reviewedSubmission = await transaction.kycSubmission.update({
+      where: { id: submissionId },
+      data: {
+        status: reviewStatus,
+        notes: mergedNotes,
+        reviewedAt,
+        reviewedBy
+      }
+    });
+
+    await transaction.user.update({
+      where: { id: existingSubmission.userId },
+      data: {
+        kycStatus: reviewStatus === KycSubmissionStatus.APPROVED ? "APPROVED" : "REJECTED"
+      }
+    });
+
+    await transaction.kycArchive.upsert({
+      where: { submissionId },
+      create: {
+        submissionId,
+        userId: existingSubmission.userId,
+        userRole: existingSubmission.user.role,
+        status: reviewStatus,
+        documentUrl: existingSubmission.documentUrl,
+        documentBackUrl: archiveDetails.documentBackUrl,
+        selfieImageUrl: archiveDetails.selfieImageUrl,
+        movementCheckPassed: archiveDetails.movementCheckPassed,
+        movementCheckPrompt: archiveDetails.movementCheckPrompt,
+        documentType: archiveDetails.documentType,
+        documentNumber: archiveDetails.documentNumber,
+        legalName: archiveDetails.legalName,
+        issuingCountry: archiveDetails.issuingCountry,
+        reviewerNotes: archiveDetails.reviewerNotes,
+        reviewedBy,
+        reviewedAt,
+        metadata: archiveMetadata
+      },
+      update: {
+        status: reviewStatus,
+        documentUrl: existingSubmission.documentUrl,
+        documentBackUrl: archiveDetails.documentBackUrl,
+        selfieImageUrl: archiveDetails.selfieImageUrl,
+        movementCheckPassed: archiveDetails.movementCheckPassed,
+        movementCheckPrompt: archiveDetails.movementCheckPrompt,
+        documentType: archiveDetails.documentType,
+        documentNumber: archiveDetails.documentNumber,
+        legalName: archiveDetails.legalName,
+        issuingCountry: archiveDetails.issuingCountry,
+        reviewerNotes: archiveDetails.reviewerNotes,
+        reviewedBy,
+        reviewedAt,
+        metadata: archiveMetadata
+      }
+    });
+
+    return reviewedSubmission;
   });
 
   logAdminAction({
@@ -229,12 +348,13 @@ adminRouter.post("/kyc/:submissionId/review", async (request: AuthenticatedReque
     action: "kyc.review",
     targetType: "kyc_submission",
     targetId: submission.id,
-    metadata: { status: body.status }
+    metadata: { status: reviewStatus, archived: true }
   });
 
   response.json({
-    message: `KYC ${body.status.toLowerCase()} successfully`,
-    submission
+    message: `KYC ${reviewStatus.toLowerCase()} successfully`,
+    submission,
+    archived: true
   });
 });
 

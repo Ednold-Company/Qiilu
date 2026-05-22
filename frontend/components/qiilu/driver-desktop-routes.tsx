@@ -33,10 +33,11 @@ import {
   Wallet
 } from "lucide-react";
 import { fetchJson } from "@/lib/api";
-import { clearSession, type SessionUser } from "@/lib/auth-session";
+import { clearSession, getSession, type SessionUser } from "@/lib/auth-session";
 import { readDocumentFileAsDataUrl } from "@/lib/document-upload";
 import { shouldUpdateLiveCoords } from "@/lib/map-motion";
 import { readImageFileAsDataUrl } from "@/lib/profile-image";
+import { getRealtimeUrl } from "@/lib/realtime";
 import { useTheme } from "@/lib/theme";
 
 const PassengerLiveMap = dynamic(() => import("@/components/passenger-live-map"), { ssr: false });
@@ -461,6 +462,30 @@ export function DriverHomeDesktopPage({ user }: { user: SessionUser }) {
   }, [user.id]);
 
   useEffect(() => {
+    const session = getSession();
+
+    if (!session?.token) {
+      return;
+    }
+
+    const socket = new WebSocket(getRealtimeUrl(session.token));
+
+    socket.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data) as { type?: string };
+
+        if (["driver.queue.updated", "ride.assigned", "ride.stage.updated", "ride.cancelled"].includes(message.type ?? "")) {
+          void loadDashboard();
+        }
+      } catch {
+        // Ignore malformed realtime events and keep the driver connected.
+      }
+    };
+
+    return () => socket.close();
+  }, [user.id]);
+
+  useEffect(() => {
     if (typeof window === "undefined" || !("geolocation" in navigator)) {
       return;
     }
@@ -485,6 +510,28 @@ export function DriverHomeDesktopPage({ user }: { user: SessionUser }) {
     return () => navigator.geolocation.clearWatch(watchId);
   }, []);
 
+  useEffect(() => {
+    if (availability !== "AVAILABLE" || !currentCoords) {
+      return;
+    }
+
+    const syncLocation = () => {
+      void fetchJson(`/driver/status/${user.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          availability: "AVAILABLE",
+          lat: currentCoords.lat,
+          lng: currentCoords.lng
+        })
+      }).catch(() => undefined);
+    };
+
+    syncLocation();
+    const intervalId = window.setInterval(syncLocation, 60000);
+
+    return () => window.clearInterval(intervalId);
+  }, [availability, currentCoords, user.id]);
+
   const request = requests[0] ?? null;
   const requestCards = requests.slice(0, 3);
   const completedRideCount = history.past.length;
@@ -501,7 +548,10 @@ export function DriverHomeDesktopPage({ user }: { user: SessionUser }) {
     try {
       await fetchJson(`/driver/status/${user.id}`, {
         method: "PUT",
-        body: JSON.stringify({ availability: next })
+        body: JSON.stringify({
+          availability: next,
+          ...(currentCoords ? { lat: currentCoords.lat, lng: currentCoords.lng } : {})
+        })
       });
       setAvailability(next);
       setActionMessage(next === "AVAILABLE" ? "Driver is online. Incoming requests will appear in Active Requests." : "Driver is offline.");

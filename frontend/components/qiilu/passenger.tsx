@@ -280,16 +280,6 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
   }, []);
 
   useEffect(() => {
-    fetchJson<{ options: VehicleOption[] }>("/passenger/vehicle-options")
-      .then((payload) => {
-        setVehicleOptions(payload.options);
-        setSelectedVehicleId(payload.options.find((option) => option.isAvailable)?.id ?? payload.options[0]?.id ?? null);
-      })
-      .catch((error) => {
-        setFeedback(error instanceof Error ? error.message : "Could not load vehicle options.");
-      })
-      .finally(() => setIsLoadingOptions(false));
-
     fetchJson<{ experience: PassengerExperience }>("/passenger/experience", {
       headers: { Authorization: `Bearer ${token}` }
     })
@@ -305,6 +295,47 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
       })
       .finally(() => setIsLoadingExperience(false));
   }, [token]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadVehicleOptions = async () => {
+      try {
+        const payload = await fetchJson<{ options: VehicleOption[] }>("/passenger/vehicle-options");
+
+        if (!active) {
+          return;
+        }
+
+        setVehicleOptions(payload.options);
+        setSelectedVehicleId((current) => {
+          if (current && payload.options.some((option) => option.id === current)) {
+            return current;
+          }
+
+          return payload.options.find((option) => option.isAvailable)?.id ?? payload.options[0]?.id ?? null;
+        });
+      } catch (error) {
+        if (active) {
+          setFeedback(error instanceof Error ? error.message : "Could not load vehicle options.");
+        }
+      } finally {
+        if (active) {
+          setIsLoadingOptions(false);
+        }
+      }
+    };
+
+    void loadVehicleOptions();
+    const intervalId = window.setInterval(() => {
+      void loadVehicleOptions();
+    }, 15000);
+
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   useEffect(() => {
     const query = pickup.trim();
