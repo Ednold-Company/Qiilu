@@ -130,6 +130,7 @@ export async function autoAssignRide(rideId: string) {
       passengerId: assignedRide.passengerId,
       driverId: best.driver.id,
       driverName: best.driver.name,
+      driverPhone: null,
       pickup: assignedRide.pickup,
       destination: assignedRide.destination,
       etaMinutes: assignedRide.etaMinutes,

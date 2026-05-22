@@ -248,6 +248,15 @@ driverRouter.post("/requests/:rideId/accept", requireAuth, async (request: Authe
       status: "ACCEPTED",
       driverId: driver.id,
       assignedAt: currentRide.assignedAt ?? new Date()
+    },
+    include: {
+      driver: {
+        select: {
+          id: true,
+          name: true,
+          phone: true
+        }
+      }
     }
   });
 
@@ -264,6 +273,7 @@ driverRouter.post("/requests/:rideId/accept", requireAuth, async (request: Authe
     passengerId: ride.passengerId,
     driverId: driver.id,
     driverName: driver.name,
+    driverPhone: driver.phone,
     pickup: ride.pickup,
     destination: ride.destination,
     etaMinutes: ride.etaMinutes,

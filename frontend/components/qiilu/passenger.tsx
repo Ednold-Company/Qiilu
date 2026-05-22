@@ -74,6 +74,11 @@ type RideState = {
   estimatedFareGhs: number;
   etaMinutes: number;
   safetyPin: string | null;
+  driver?: {
+    id: string;
+    name: string;
+    phone: string;
+  } | null;
 };
 
 type RideResponse = {
@@ -93,6 +98,18 @@ type RideResponse = {
     message?: string;
   };
   estimate: RouteEstimate;
+};
+
+type PassengerRideItem = RideState & {
+  driver: {
+    id: string;
+    name: string;
+    phone: string;
+  } | null;
+  paymentMethod: string;
+  momoProvider: string | null;
+  distanceKm: number;
+  createdAt: string;
 };
 
 type PassengerExperience = {
@@ -153,6 +170,29 @@ function formatRouteEstimateError(error: unknown) {
   }
 
   return error.message;
+}
+
+function mergePassengerRideIntoActiveRide(current: RideResponse | null, ride: PassengerRideItem) {
+  if (!current || current.ride.id !== ride.id) {
+    return current;
+  }
+
+  return {
+    ...current,
+    ride: {
+      ...current.ride,
+      status: ride.status,
+      etaMinutes: ride.etaMinutes,
+      estimatedFareGhs: ride.estimatedFareGhs,
+      safetyPin: ride.safetyPin,
+      driver: ride.driver
+    },
+    payment: {
+      ...current.payment,
+      method: ride.paymentMethod,
+      provider: ride.momoProvider ?? current.payment.provider
+    }
+  };
 }
 
 export function PassengerScreen({ user, token }: { user: SessionUser; token: string }) {
@@ -483,7 +523,7 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
         }
 
         if (message.type === "ride.accepted") {
-          const payload = message.payload as { etaMinutes: number; fareGhs: number; safetyPin?: string | null };
+          const payload = message.payload as { driverId?: string; driverName?: string; driverPhone?: string | null; etaMinutes: number; fareGhs: number; safetyPin?: string | null };
           setActiveRide((current) =>
             current
               ? {
@@ -493,7 +533,14 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
                     status: "ACCEPTED",
                     etaMinutes: payload.etaMinutes ?? current.ride.etaMinutes,
                     estimatedFareGhs: payload.fareGhs ?? current.ride.estimatedFareGhs,
-                    safetyPin: payload.safetyPin ?? current.ride.safetyPin
+                    safetyPin: payload.safetyPin ?? current.ride.safetyPin,
+                    driver: payload.driverId && payload.driverName
+                      ? {
+                          id: payload.driverId,
+                          name: payload.driverName,
+                          phone: payload.driverPhone ?? ""
+                        }
+                      : current.ride.driver ?? null
                   }
                 }
               : current
@@ -548,6 +595,38 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
       }
     };
   }, [activeRide?.ride.status]);
+
+  useEffect(() => {
+    if (!activeRide || !["SEARCHING", "ACCEPTED", "IN_PROGRESS"].includes(activeRide.ride.status)) {
+      return;
+    }
+
+    const syncActiveRide = async () => {
+      try {
+        const payload = await fetchJson<{ rides: PassengerRideItem[] }>("/passenger/rides", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const latest = payload.rides.find((ride) => ride.id === activeRide.ride.id);
+
+        if (!latest) {
+          return;
+        }
+
+        setActiveRide((current) => mergePassengerRideIntoActiveRide(current, latest));
+
+        if (latest.status === "ACCEPTED") {
+          setFeedback("A driver has accepted your ride.");
+        }
+      } catch {
+        // Keep the visible ride state if fallback sync is temporarily unavailable.
+      }
+    };
+
+    void syncActiveRide();
+    const intervalId = window.setInterval(syncActiveRide, 8000);
+
+    return () => window.clearInterval(intervalId);
+  }, [activeRide?.ride.id, activeRide?.ride.status, token]);
 
   const selectedVehicle = vehicleOptions.find((option) => option.id === selectedVehicleId) ?? null;
   const canBook = Boolean(pickup.trim() && destination.trim() && selectedVehicle?.isAvailable && estimate && !isBooking);
@@ -1162,6 +1241,7 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
                       <div className="flex items-center justify-between"><span className="text-muted-foreground">Destination</span><strong>{activeRide.ride.destination}</strong></div>
                       <div className="flex items-center justify-between"><span className="text-muted-foreground">Fare</span><strong>GHS {activeRide.ride.estimatedFareGhs.toFixed(2)}</strong></div>
                       <div className="flex items-center justify-between"><span className="text-muted-foreground">ETA</span><strong>{activeRide.ride.etaMinutes} min</strong></div>
+                      <div className="flex items-center justify-between"><span className="text-muted-foreground">Driver</span><strong>{activeRide.ride.driver?.name ?? "Waiting for assignment"}</strong></div>
                       <div className="flex items-center justify-between"><span className="text-muted-foreground">Payment</span><strong>{activeRide.payment.provider ?? activeRide.payment.method}</strong></div>
                       <div className="flex items-center justify-between"><span className="text-muted-foreground">Payment status</span><strong>{activeRide.payment.status ?? "Pending"}</strong></div>
                     </div>
@@ -1495,9 +1575,9 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
                         </div>
                       </div>
                       <div>
-                        <h4 className="text-lg font-bold">Assigned driver</h4>
+                        <h4 className="text-lg font-bold">{activeRide?.ride.driver?.name ?? "Assigned driver"}</h4>
                         <div className="text-sm font-medium text-muted-foreground">
-                          {activeRide?.payment.provider ?? activeRide?.payment.method ?? "Mobile Money"}
+                          {activeRide?.ride.driver?.phone || activeRide?.payment.provider || activeRide?.payment.method || "Mobile Money"}
                         </div>
                       </div>
                     </div>
@@ -1526,6 +1606,7 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
                   <div className="mb-3 font-bold">Trip details</div>
                   <div className="space-y-3 text-sm">
                     <div className="flex items-center justify-between"><span className="text-muted-foreground">Fare</span><strong>GHS {activeRide?.ride.estimatedFareGhs.toFixed(2)}</strong></div>
+                    <div className="flex items-center justify-between"><span className="text-muted-foreground">Driver</span><strong>{activeRide?.ride.driver?.name ?? "Waiting for assignment"}</strong></div>
                     <div className="flex items-center justify-between"><span className="text-muted-foreground">Payment</span><strong>{activeRide?.payment.provider ?? activeRide?.payment.method}</strong></div>
                     <div className="flex items-center justify-between"><span className="text-muted-foreground">Route</span><strong>{activeRide?.ride.pickup} to {activeRide?.ride.destination}</strong></div>
                   </div>

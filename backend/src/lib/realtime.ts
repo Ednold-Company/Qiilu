@@ -105,6 +105,7 @@ class RealtimeGateway {
     passengerId: string;
     driverId: string;
     driverName: string;
+    driverPhone?: string | null;
     pickup: string;
     destination: string;
     etaMinutes: number;
