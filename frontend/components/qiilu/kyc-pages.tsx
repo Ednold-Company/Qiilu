@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { Camera, CheckCircle2, ChevronLeft, FileText, ShieldCheck, UploadCloud, User, CreditCard, Car } from "lucide-react";
 import { DriverDesktopShell } from "@/components/qiilu/driver-desktop-routes";
 import { DriverShell } from "@/components/qiilu/driver-mobile-routes";
@@ -28,6 +28,177 @@ type PassengerKycResponse = {
 type DocumentSide = "front" | "back";
 
 const KYC_MOVEMENT_PROMPT = "Turn your head left, then right before capturing";
+const FACE_LANDMARKER_WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm";
+const FACE_LANDMARKER_MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task";
+
+type FaceLandmarkPoint = {
+  x: number;
+  y: number;
+  z?: number;
+};
+
+type FaceLandmarkerLike = {
+  detectForVideo: (
+    video: HTMLVideoElement,
+    timestamp: number
+  ) => {
+    faceLandmarks?: FaceLandmarkPoint[][];
+  };
+  close?: () => void;
+};
+
+function useHeadMovementCheck({
+  capturing,
+  cameraReady,
+  videoRef,
+  onPassed
+}: {
+  capturing: boolean;
+  cameraReady: boolean;
+  videoRef: RefObject<HTMLVideoElement | null>;
+  onPassed: () => void;
+}) {
+  const [status, setStatus] = useState("Enable the camera to start the movement check.");
+  const [leftDetected, setLeftDetected] = useState(false);
+  const [rightDetected, setRightDetected] = useState(false);
+  const progressRef = useRef({ left: false, right: false });
+  const onPassedRef = useRef(onPassed);
+
+  useEffect(() => {
+    onPassedRef.current = onPassed;
+  }, [onPassed]);
+
+  useEffect(() => {
+    if (!capturing) {
+      progressRef.current = { left: false, right: false };
+      setLeftDetected(false);
+      setRightDetected(false);
+      setStatus("Enable the camera to start the movement check.");
+      return;
+    }
+
+    if (!cameraReady) {
+      setStatus("Starting camera before movement detection...");
+      return;
+    }
+
+    let cancelled = false;
+    let animationFrameId = 0;
+    let landmarker: FaceLandmarkerLike | null = null;
+
+    const updateProgress = (left: boolean, right: boolean, nextStatus: string) => {
+      if (cancelled) {
+        return;
+      }
+
+      progressRef.current = { left, right };
+      setLeftDetected(left);
+      setRightDetected(right);
+      setStatus(nextStatus);
+
+      if (left && right) {
+        onPassedRef.current();
+      }
+    };
+
+    const detect = () => {
+      const video = videoRef.current;
+
+      if (!landmarker || !video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+        animationFrameId = window.requestAnimationFrame(detect);
+        return;
+      }
+
+      try {
+        const result = landmarker.detectForVideo(video, performance.now());
+        const landmarks = result.faceLandmarks?.[0];
+
+        if (!landmarks) {
+          updateProgress(progressRef.current.left, progressRef.current.right, "Place your face clearly inside the circle.");
+          animationFrameId = window.requestAnimationFrame(detect);
+          return;
+        }
+
+        const nose = landmarks[1];
+        const leftCheek = landmarks[234];
+        const rightCheek = landmarks[454];
+
+        if (!nose || !leftCheek || !rightCheek) {
+          updateProgress(progressRef.current.left, progressRef.current.right, "Looking for your face landmarks...");
+          animationFrameId = window.requestAnimationFrame(detect);
+          return;
+        }
+
+        const leftDistance = Math.abs(nose.x - leftCheek.x);
+        const rightDistance = Math.abs(rightCheek.x - nose.x);
+        const yawScore = (rightDistance - leftDistance) / Math.max(leftDistance + rightDistance, 0.001);
+        const nextLeft = progressRef.current.left || yawScore < -0.14;
+        const nextRight = progressRef.current.right || yawScore > 0.14;
+        const nextStatus =
+          nextLeft && nextRight
+            ? "Movement verified. You can capture your selfie."
+            : nextLeft
+              ? "Good. Now turn your head right."
+              : nextRight
+                ? "Good. Now turn your head left."
+                : "Slowly turn your head left, then right.";
+
+        updateProgress(nextLeft, nextRight, nextStatus);
+      } catch {
+        updateProgress(progressRef.current.left, progressRef.current.right, "Movement detector is calibrating. Keep your face visible.");
+      }
+
+      animationFrameId = window.requestAnimationFrame(detect);
+    };
+
+    const load = async () => {
+      try {
+        setStatus("Loading movement detector...");
+        const { FaceLandmarker, FilesetResolver } = await import("@mediapipe/tasks-vision");
+        const vision = await FilesetResolver.forVisionTasks(FACE_LANDMARKER_WASM_URL);
+
+        try {
+          landmarker = (await FaceLandmarker.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath: FACE_LANDMARKER_MODEL_URL,
+              delegate: "GPU"
+            },
+            runningMode: "VIDEO",
+            numFaces: 1
+          })) as FaceLandmarkerLike;
+        } catch {
+          landmarker = (await FaceLandmarker.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath: FACE_LANDMARKER_MODEL_URL,
+              delegate: "CPU"
+            },
+            runningMode: "VIDEO",
+            numFaces: 1
+          })) as FaceLandmarkerLike;
+        }
+
+        if (!cancelled) {
+          setStatus("Slowly turn your head left, then right.");
+          detect();
+        }
+      } catch {
+        if (!cancelled) {
+          setStatus("Movement detector could not load. Check your internet connection and try again.");
+        }
+      }
+    };
+
+    void load();
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(animationFrameId);
+      landmarker?.close?.();
+    };
+  }, [cameraReady, capturing, videoRef]);
+
+  return { status, leftDetected, rightDetected };
+}
 
 function statusTone(status: "PENDING" | "APPROVED" | "REJECTED") {
   if (status === "APPROVED") return "bg-secondary/10 text-secondary";
@@ -158,6 +329,12 @@ function DriverKycContent({ user, compact }: { user: SessionUser; compact: boole
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const movementCheck = useHeadMovementCheck({
+    capturing,
+    cameraReady,
+    videoRef,
+    onPassed: () => setMovementCheckPassed(true)
+  });
 
   const load = async () => setPayload(await fetchJson<DriverKycResponse>(`/driver/kyc/${user.id}`));
 
@@ -170,13 +347,16 @@ function DriverKycContent({ user, compact }: { user: SessionUser; compact: boole
     streamRef.current = null;
   }, []);
 
-  const attachCameraStream = async () => {
+  const attachCameraStream = async (incomingStream?: MediaStream | null) => {
     const video = videoRef.current;
-    const stream = streamRef.current;
+    const stream = incomingStream ?? streamRef.current;
 
     if (!video || !stream) {
       return;
     }
+
+    video.muted = true;
+    video.playsInline = true;
 
     if (video.srcObject !== stream) {
       video.srcObject = stream;
@@ -184,8 +364,10 @@ function DriverKycContent({ user, compact }: { user: SessionUser; compact: boole
 
     try {
       await video.play();
-      setCameraReady(true);
-      setMessage(null);
+      if (video.videoWidth && video.videoHeight) {
+        setCameraReady(true);
+        setMessage(null);
+      }
     } catch {
       setCameraReady(false);
       setMessage("Camera preview is loading. If it stays blank, allow camera access and try again.");
@@ -237,6 +419,13 @@ function DriverKycContent({ user, compact }: { user: SessionUser; compact: boole
       }
 
       streamRef.current?.getTracks().forEach((track) => track.stop());
+      setCameraReady(false);
+      setSelfieProvided(false);
+      setSelfieImageUrl("");
+      setMovementCheckPassed(false);
+      setMessage(null);
+      setCapturing(true);
+
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: "user",
@@ -247,12 +436,9 @@ function DriverKycContent({ user, compact }: { user: SessionUser; compact: boole
       });
 
       streamRef.current = stream;
-      setCameraReady(false);
-      setSelfieProvided(false);
-      setSelfieImageUrl("");
-      setMovementCheckPassed(false);
-      setMessage(null);
-      setCapturing(true);
+      window.setTimeout(() => {
+        void attachCameraStream(stream);
+      }, 0);
     } catch (error) {
       setCapturing(false);
       setCameraReady(false);
@@ -379,8 +565,14 @@ function DriverKycContent({ user, compact }: { user: SessionUser; compact: boole
                     autoPlay
                     playsInline
                     muted
+                    onLoadedData={() => void attachCameraStream()}
                     onLoadedMetadata={() => void attachCameraStream()}
-                    className="h-full w-full scale-x-[-1] bg-black object-cover"
+                    onCanPlay={() => {
+                      setCameraReady(true);
+                      void videoRef.current?.play();
+                    }}
+                    className="h-full w-full bg-black object-cover"
+                    style={{ transform: "scaleX(-1)" }}
                   />
                   {!cameraReady ? (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/70 px-6 text-center text-sm font-bold text-white">
@@ -406,16 +598,15 @@ function DriverKycContent({ user, compact }: { user: SessionUser; compact: boole
             <div className="mx-auto mb-6 max-w-md rounded-2xl border border-border bg-muted/30 p-4 text-left">
               <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Movement check</div>
               <div className="mt-2 text-sm font-semibold">{KYC_MOVEMENT_PROMPT}</div>
-              <button
-                type="button"
-                disabled={!cameraReady || !capturing}
-                onClick={() => setMovementCheckPassed(true)}
-                className={`mt-3 rounded-full px-4 py-2 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-60 ${
-                  movementCheckPassed ? "bg-secondary text-secondary-foreground" : "bg-primary text-primary-foreground"
-                }`}
-              >
-                {movementCheckPassed ? "Movement confirmed" : "I completed the movement"}
-              </button>
+              <div className="mt-2 text-xs text-muted-foreground">{movementCheck.status}</div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className={`rounded-full px-3 py-1 text-xs font-bold ${movementCheck.leftDetected ? "bg-secondary text-secondary-foreground" : "bg-background text-muted-foreground"}`}>
+                  Left turn {movementCheck.leftDetected ? "detected" : "waiting"}
+                </span>
+                <span className={`rounded-full px-3 py-1 text-xs font-bold ${movementCheck.rightDetected ? "bg-secondary text-secondary-foreground" : "bg-background text-muted-foreground"}`}>
+                  Right turn {movementCheck.rightDetected ? "detected" : "waiting"}
+                </span>
+              </div>
             </div>
             {message ? <div className="mb-6 rounded-xl bg-muted/60 px-4 py-3 text-sm text-muted-foreground">{message}</div> : null}
             <div className="flex items-center justify-between">
@@ -529,6 +720,12 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const movementCheck = useHeadMovementCheck({
+    capturing,
+    cameraReady,
+    videoRef,
+    onPassed: () => setMovementCheckPassed(true)
+  });
 
   const load = async () => setPayload(await fetchJson<PassengerKycResponse>(`/passenger/kyc/${user.id}`));
 
@@ -541,13 +738,16 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
     streamRef.current = null;
   }, []);
 
-  const attachCameraStream = async () => {
+  const attachCameraStream = async (incomingStream?: MediaStream | null) => {
     const video = videoRef.current;
-    const stream = streamRef.current;
+    const stream = incomingStream ?? streamRef.current;
 
     if (!video || !stream) {
       return;
     }
+
+    video.muted = true;
+    video.playsInline = true;
 
     if (video.srcObject !== stream) {
       video.srcObject = stream;
@@ -555,8 +755,10 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
 
     try {
       await video.play();
-      setCameraReady(true);
-      setMessage(null);
+      if (video.videoWidth && video.videoHeight) {
+        setCameraReady(true);
+        setMessage(null);
+      }
     } catch {
       setCameraReady(false);
       setMessage("Camera preview is loading. If it stays blank, allow camera access and try again.");
@@ -608,6 +810,13 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
       }
 
       streamRef.current?.getTracks().forEach((track) => track.stop());
+      setCameraReady(false);
+      setSelfieProvided(false);
+      setSelfieImageUrl("");
+      setMovementCheckPassed(false);
+      setMessage(null);
+      setCapturing(true);
+
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: "user",
@@ -618,12 +827,9 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
       });
 
       streamRef.current = stream;
-      setCameraReady(false);
-      setSelfieProvided(false);
-      setSelfieImageUrl("");
-      setMovementCheckPassed(false);
-      setMessage(null);
-      setCapturing(true);
+      window.setTimeout(() => {
+        void attachCameraStream(stream);
+      }, 0);
     } catch (error) {
       setCapturing(false);
       setCameraReady(false);
@@ -752,8 +958,14 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
                     autoPlay
                     playsInline
                     muted
+                    onLoadedData={() => void attachCameraStream()}
                     onLoadedMetadata={() => void attachCameraStream()}
-                    className="h-full w-full scale-x-[-1] bg-black object-cover"
+                    onCanPlay={() => {
+                      setCameraReady(true);
+                      void videoRef.current?.play();
+                    }}
+                    className="h-full w-full bg-black object-cover"
+                    style={{ transform: "scaleX(-1)" }}
                   />
                   {!cameraReady ? (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/70 px-6 text-center text-sm font-bold text-white">
@@ -779,16 +991,15 @@ function PassengerKycContent({ user, compact }: { user: SessionUser; compact: bo
             <div className="mx-auto mb-6 max-w-md rounded-2xl border border-border bg-muted/30 p-4 text-left">
               <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Movement check</div>
               <div className="mt-2 text-sm font-semibold">{KYC_MOVEMENT_PROMPT}</div>
-              <button
-                type="button"
-                disabled={!cameraReady || !capturing}
-                onClick={() => setMovementCheckPassed(true)}
-                className={`mt-3 rounded-full px-4 py-2 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-60 ${
-                  movementCheckPassed ? "bg-secondary text-secondary-foreground" : "bg-primary text-primary-foreground"
-                }`}
-              >
-                {movementCheckPassed ? "Movement confirmed" : "I completed the movement"}
-              </button>
+              <div className="mt-2 text-xs text-muted-foreground">{movementCheck.status}</div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className={`rounded-full px-3 py-1 text-xs font-bold ${movementCheck.leftDetected ? "bg-secondary text-secondary-foreground" : "bg-background text-muted-foreground"}`}>
+                  Left turn {movementCheck.leftDetected ? "detected" : "waiting"}
+                </span>
+                <span className={`rounded-full px-3 py-1 text-xs font-bold ${movementCheck.rightDetected ? "bg-secondary text-secondary-foreground" : "bg-background text-muted-foreground"}`}>
+                  Right turn {movementCheck.rightDetected ? "detected" : "waiting"}
+                </span>
+              </div>
             </div>
             {message ? <div className="mb-6 rounded-xl bg-muted/60 px-4 py-3 text-sm text-muted-foreground">{message}</div> : null}
             <div className="flex items-center justify-between">
