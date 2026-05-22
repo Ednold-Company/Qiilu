@@ -84,10 +84,10 @@ driverRouter.get("/requests", requireAuth, async (request: AuthenticatedRequest,
     return;
   }
 
+  const realtimeConnected = realtimeGateway.isUserConnected(driver.id, "DRIVER");
   const dispatchEnabled =
     driver.kycStatus === "APPROVED" &&
-    driver.availability === "AVAILABLE" &&
-    realtimeGateway.isUserConnected(driver.id, "DRIVER");
+    driver.availability === "AVAILABLE";
 
   const openRequests = await prisma.ride.findMany({
     where: {
@@ -114,7 +114,9 @@ driverRouter.get("/requests", requireAuth, async (request: AuthenticatedRequest,
         ? "KYC approval is required before you can receive live ride requests."
       : driver.availability !== "AVAILABLE"
         ? "Go online to receive live ride requests."
-        : "Realtime connection required before live requests can appear.",
+        : realtimeConnected
+          ? null
+          : "Realtime is reconnecting. Requests can still appear here while Qiilu falls back to polling.",
     requests: openRequests.map((ride, index) => ({
       id: ride.id,
       source:
@@ -223,11 +225,6 @@ driverRouter.post("/requests/:rideId/accept", requireAuth, async (request: Authe
 
   if (driver.kycStatus !== "APPROVED") {
     response.status(409).json({ message: "KYC approval is required before accepting rides" });
-    return;
-  }
-
-  if (!realtimeGateway.isUserConnected(driver.id, "DRIVER")) {
-    response.status(409).json({ message: "Realtime connection is required before accepting a ride" });
     return;
   }
 

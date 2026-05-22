@@ -304,6 +304,14 @@ export function DriverHomeMobilePage({ user }: { user: SessionUser }) {
   }, [user.id]);
 
   useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void load();
+    }, 12000);
+
+    return () => window.clearInterval(intervalId);
+  }, [user.id]);
+
+  useEffect(() => {
     const session = getSession();
 
     if (!session?.token) {

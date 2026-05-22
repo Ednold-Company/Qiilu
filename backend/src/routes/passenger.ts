@@ -107,6 +107,7 @@ passengerRouter.get("/vehicle-options", async (_request, response) => {
     }
   });
   const connectedDriverCount = availableDrivers.filter((driver) => realtimeGateway.isUserConnected(driver.id, "DRIVER")).length;
+  const availableDriverCount = availableDrivers.length;
   const vehicles = await prisma.vehicle.findMany({
     where: { active: true, category: "CAR" },
     orderBy: { baseFareGhs: "asc" }
@@ -122,11 +123,13 @@ passengerRouter.get("/vehicle-options", async (_request, response) => {
       seats: vehicle.seats,
       priceGhs: vehicle.baseFareGhs,
       description: vehicle.description,
-      nearby: connectedDriverCount,
-      isAvailable: connectedDriverCount > 0,
+      nearby: availableDriverCount,
+      isAvailable: availableDriverCount > 0,
       availabilityLabel:
-        connectedDriverCount > 0
-          ? `${connectedDriverCount} driver${connectedDriverCount === 1 ? "" : "s"} online`
+        availableDriverCount > 0
+          ? connectedDriverCount > 0
+            ? `${availableDriverCount} driver${availableDriverCount === 1 ? "" : "s"} online`
+            : `${availableDriverCount} driver${availableDriverCount === 1 ? "" : "s"} available`
           : "No drivers online right now"
     }))
   });
