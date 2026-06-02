@@ -66,7 +66,7 @@ export async function syncDriverAvailability(input: {
   });
 }
 
-export async function autoAssignRide(rideId: string) {
+export async function autoAssignRide(rideId: string, options?: { excludedDriverIds?: string[] }) {
   const ride = await prisma.ride.findUnique({
     where: { id: rideId },
     include: {
@@ -83,6 +83,13 @@ export async function autoAssignRide(rideId: string) {
     const candidates = await prisma.user.findMany({
       where: {
         role: "DRIVER",
+        ...(options?.excludedDriverIds?.length
+          ? {
+              id: {
+                notIn: options.excludedDriverIds
+              }
+            }
+          : {}),
         availability: "AVAILABLE",
         kycStatus: "APPROVED",
         lastSeenAt: {

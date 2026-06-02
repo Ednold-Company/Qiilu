@@ -35,6 +35,7 @@ import {
 import { fetchJson } from "@/lib/api";
 import { clearSession, getSession, type SessionUser } from "@/lib/auth-session";
 import { readDocumentFileAsDataUrl } from "@/lib/document-upload";
+import { playIncomingRideSound, primeDriverAlertSound } from "@/lib/driver-alert-sound";
 import { shouldUpdateLiveCoords } from "@/lib/map-motion";
 import { readImageFileAsDataUrl } from "@/lib/profile-image";
 import { getRealtimeUrl } from "@/lib/realtime";
@@ -282,6 +283,7 @@ function DriverDesktopPlaceholder({ title, description }: { title: string; descr
 
 function DriverHomeDesktopPageLegacy({ user }: { user: SessionUser }) {
   const [requests, setRequests] = useState<DriverRequestItem[]>([]);
+  const [requestCountdowns, setRequestCountdowns] = useState<Record<string, number>>({});
   const [wallet, setWallet] = useState<DriverWalletResponse["wallet"] | null>(null);
   const [availability, setAvailability] = useState<DriverStatusResponse["status"]["availability"]>("OFFLINE");
 
@@ -293,6 +295,15 @@ function DriverHomeDesktopPageLegacy({ user }: { user: SessionUser }) {
     ])
       .then(([requestPayload, walletPayload, statusPayload]) => {
         setRequests(requestPayload.requests);
+        setRequestCountdowns((current) => {
+          const next: Record<string, number> = {};
+
+          requestPayload.requests.forEach((item) => {
+            next[item.id] = current[item.id] ?? item.countdownSeconds;
+          });
+
+          return next;
+        });
         setWallet(walletPayload.wallet);
         setAvailability(statusPayload.status.availability);
       })
@@ -302,6 +313,26 @@ function DriverHomeDesktopPageLegacy({ user }: { user: SessionUser }) {
         setAvailability("OFFLINE");
       });
   }, [user.id]);
+
+  useEffect(() => {
+    if (!requests.length) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setRequestCountdowns((current) => {
+        const next: Record<string, number> = {};
+
+        requests.forEach((item) => {
+          next[item.id] = Math.max((current[item.id] ?? item.countdownSeconds) - 1, 0);
+        });
+
+        return next;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [requests]);
 
   const request = requests[0] ?? null;
 
@@ -352,7 +383,7 @@ function DriverHomeDesktopPageLegacy({ user }: { user: SessionUser }) {
                     </div>
                   </div>
                   <div className="rounded-full border-2 border-primary/20 px-3 py-2 text-sm font-bold text-primary">
-                    {request.countdownSeconds}s
+                    {requestCountdowns[request.id] ?? request.countdownSeconds}s
                   </div>
                 </div>
                 <div className="mb-6 space-y-4 border-l border-border pl-4">
@@ -426,6 +457,7 @@ function DriverHomeDesktopPageLegacy({ user }: { user: SessionUser }) {
 
 export function DriverHomeDesktopPage({ user }: { user: SessionUser }) {
   const [requests, setRequests] = useState<DriverRequestItem[]>([]);
+  const [requestCountdowns, setRequestCountdowns] = useState<Record<string, number>>({});
   const [wallet, setWallet] = useState<DriverWalletResponse["wallet"] | null>(null);
   const [history, setHistory] = useState<DriverHistoryResponse>({ upcoming: [], past: [], cancelled: [] });
   const [kycStatus, setKycStatus] = useState<DriverKycResponse["kycStatus"]>("PENDING");
@@ -435,6 +467,9 @@ export function DriverHomeDesktopPage({ user }: { user: SessionUser }) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSendingSos, setIsSendingSos] = useState(false);
   const [currentCoords, setCurrentCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const previousRequestIdsRef = useRef<Set<string>>(new Set());
+  const hasLoadedRequestIdsRef = useRef(false);
+  const autoRejectedRequestIdsRef = useRef<Set<string>>(new Set());
 
   const loadDashboard = async () => {
     const [requestPayload, walletPayload, statusPayload, historyPayload, kycPayload] = await Promise.all([
@@ -446,6 +481,15 @@ export function DriverHomeDesktopPage({ user }: { user: SessionUser }) {
     ]);
 
     setRequests(requestPayload.requests);
+    setRequestCountdowns((current) => {
+      const next: Record<string, number> = {};
+
+      requestPayload.requests.forEach((item) => {
+        next[item.id] = current[item.id] ?? item.countdownSeconds;
+      });
+
+      return next;
+    });
     setDispatchMessage(requestPayload.message ?? null);
     setWallet(walletPayload.wallet);
     setAvailability(statusPayload.status.availability);
@@ -468,6 +512,52 @@ export function DriverHomeDesktopPage({ user }: { user: SessionUser }) {
 
     return () => window.clearInterval(intervalId);
   }, [user.id]);
+
+  useEffect(() => {
+    if (!requests.length) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setRequestCountdowns((current) => {
+        const next: Record<string, number> = {};
+
+        requests.forEach((item) => {
+          next[item.id] = Math.max((current[item.id] ?? item.countdownSeconds) - 1, 0);
+        });
+
+        return next;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [requests]);
+
+  useEffect(() => {
+    const unlockSound = () => {
+      void primeDriverAlertSound().catch(() => undefined);
+    };
+
+    window.addEventListener("pointerdown", unlockSound, { once: true });
+    window.addEventListener("keydown", unlockSound, { once: true });
+
+    return () => {
+      window.removeEventListener("pointerdown", unlockSound);
+      window.removeEventListener("keydown", unlockSound);
+    };
+  }, []);
+
+  useEffect(() => {
+    const nextRequestIds = new Set(requests.map((item) => item.id));
+    const hasNewRequest = requests.some((item) => !previousRequestIdsRef.current.has(item.id));
+
+    if (hasLoadedRequestIdsRef.current && hasNewRequest && availability !== "OFFLINE") {
+      playIncomingRideSound();
+    }
+
+    previousRequestIdsRef.current = nextRequestIds;
+    hasLoadedRequestIdsRef.current = true;
+  }, [availability, requests]);
 
   useEffect(() => {
     const session = getSession();
@@ -571,13 +661,20 @@ export function DriverHomeDesktopPage({ user }: { user: SessionUser }) {
     }
   };
 
-  const handleRideAction = async (rideId: string, action: "accept" | "reject") => {
+  const handleRideAction = async (rideId: string, action: "accept" | "reject", successMessage?: string) => {
     setIsSyncing(true);
     setActionMessage(null);
 
     try {
       await fetchJson(`/driver/requests/${rideId}/${action}`, { method: "POST" });
-      setActionMessage(action === "accept" ? "Ride accepted. Passenger chat is available in Messages." : "Ride declined and returned to dispatch.");
+      if (action === "reject") {
+        setRequests((current) => current.filter((item) => item.id !== rideId));
+        setRequestCountdowns((current) => {
+          const { [rideId]: _removed, ...rest } = current;
+          return rest;
+        });
+      }
+      setActionMessage(successMessage ?? (action === "accept" ? "Ride accepted. Passenger chat is available in Messages." : "Ride declined and returned to dispatch."));
       await loadDashboard();
     } catch (error) {
       setActionMessage(error instanceof Error ? error.message : "Could not update ride request.");
@@ -585,6 +682,24 @@ export function DriverHomeDesktopPage({ user }: { user: SessionUser }) {
       setIsSyncing(false);
     }
   };
+
+  useEffect(() => {
+    if (isSyncing || !requests.length) {
+      return;
+    }
+
+    const expiredRequest = requests.find((item) => {
+      const countdown = requestCountdowns[item.id] ?? item.countdownSeconds;
+      return countdown <= 0 && !autoRejectedRequestIdsRef.current.has(item.id);
+    });
+
+    if (!expiredRequest) {
+      return;
+    }
+
+    autoRejectedRequestIdsRef.current.add(expiredRequest.id);
+    void handleRideAction(expiredRequest.id, "reject", "Ride timed out and was declined automatically.");
+  }, [isSyncing, requestCountdowns, requests]);
 
   const sendEmergencyIncident = async () => {
     if (!request) return;
@@ -683,7 +798,7 @@ export function DriverHomeDesktopPage({ user }: { user: SessionUser }) {
                         </div>
                       </div>
                       <div className="rounded-full border-2 border-primary/20 px-3 py-2 text-sm font-bold text-primary">
-                        {item.countdownSeconds}s
+                        {requestCountdowns[item.id] ?? item.countdownSeconds}s
                       </div>
                     </div>
 

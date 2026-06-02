@@ -34,6 +34,7 @@ import {
 import { fetchJson } from "@/lib/api";
 import { clearSession, getSession, type SessionUser } from "@/lib/auth-session";
 import { readDocumentFileAsDataUrl } from "@/lib/document-upload";
+import { playIncomingRideSound, primeDriverAlertSound } from "@/lib/driver-alert-sound";
 import { shouldUpdateLiveCoords } from "@/lib/map-motion";
 import { readImageFileAsDataUrl } from "@/lib/profile-image";
 import { getRealtimeUrl } from "@/lib/realtime";
@@ -263,6 +264,7 @@ function statusText(value: DriverStatusResponse["status"]["availability"] | unde
 
 export function DriverHomeMobilePage({ user }: { user: SessionUser }) {
   const [requests, setRequests] = useState<DriverRequestItem[]>([]);
+  const [requestCountdowns, setRequestCountdowns] = useState<Record<string, number>>({});
   const [wallet, setWallet] = useState<DriverWalletResponse["wallet"] | null>(null);
   const [history, setHistory] = useState<DriverHistoryResponse>({
     upcoming: [],
@@ -278,6 +280,9 @@ export function DriverHomeMobilePage({ user }: { user: SessionUser }) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSendingSos, setIsSendingSos] = useState(false);
   const [currentCoords, setCurrentCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const previousRequestIdsRef = useRef<Set<string>>(new Set());
+  const hasLoadedRequestIdsRef = useRef(false);
+  const autoRejectedRequestIdsRef = useRef<Set<string>>(new Set());
 
   const load = async () => {
     try {
@@ -289,6 +294,15 @@ export function DriverHomeMobilePage({ user }: { user: SessionUser }) {
         fetchJson<DriverKycResponse>(`/driver/kyc/${user.id}`)
       ]);
       setRequests(requestPayload.requests);
+      setRequestCountdowns((current) => {
+        const next: Record<string, number> = {};
+
+        requestPayload.requests.forEach((item) => {
+          next[item.id] = current[item.id] ?? item.countdownSeconds;
+        });
+
+        return next;
+      });
       setDispatchMessage(requestPayload.message ?? null);
       setWallet(walletPayload.wallet);
       setAvailability(statusPayload.status.availability);
@@ -310,6 +324,52 @@ export function DriverHomeMobilePage({ user }: { user: SessionUser }) {
 
     return () => window.clearInterval(intervalId);
   }, [user.id]);
+
+  useEffect(() => {
+    if (!requests.length) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setRequestCountdowns((current) => {
+        const next: Record<string, number> = {};
+
+        requests.forEach((item) => {
+          next[item.id] = Math.max((current[item.id] ?? item.countdownSeconds) - 1, 0);
+        });
+
+        return next;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [requests]);
+
+  useEffect(() => {
+    const unlockSound = () => {
+      void primeDriverAlertSound().catch(() => undefined);
+    };
+
+    window.addEventListener("pointerdown", unlockSound, { once: true });
+    window.addEventListener("keydown", unlockSound, { once: true });
+
+    return () => {
+      window.removeEventListener("pointerdown", unlockSound);
+      window.removeEventListener("keydown", unlockSound);
+    };
+  }, []);
+
+  useEffect(() => {
+    const nextRequestIds = new Set(requests.map((item) => item.id));
+    const hasNewRequest = requests.some((item) => !previousRequestIdsRef.current.has(item.id));
+
+    if (hasLoadedRequestIdsRef.current && hasNewRequest && availability !== "OFFLINE") {
+      playIncomingRideSound();
+    }
+
+    previousRequestIdsRef.current = nextRequestIds;
+    hasLoadedRequestIdsRef.current = true;
+  }, [availability, requests]);
 
   useEffect(() => {
     const session = getSession();
@@ -383,6 +443,9 @@ export function DriverHomeMobilePage({ user }: { user: SessionUser }) {
   }, [availability, currentCoords, user.id]);
 
   const currentRequest = requests[0] ?? null;
+  const currentRequestCountdown = currentRequest
+    ? requestCountdowns[currentRequest.id] ?? currentRequest.countdownSeconds
+    : 0;
   const isOnline = availability !== "OFFLINE";
   const completedRideCount = history.past.length;
   const acceptedRideCount = history.upcoming.length + history.past.length;
@@ -441,14 +504,20 @@ export function DriverHomeMobilePage({ user }: { user: SessionUser }) {
     }
   };
 
-  const rejectRide = async () => {
+  const rejectRide = async (successMessage = "Ride declined and returned to dispatch.") => {
     if (!currentRequest) return;
+    const rideId = currentRequest.id;
     setIsSyncing(true);
     setActionMessage(null);
 
     try {
-      await fetchJson(`/driver/requests/${currentRequest.id}/reject`, { method: "POST" });
-      setActionMessage("Ride declined and returned to dispatch.");
+      await fetchJson(`/driver/requests/${rideId}/reject`, { method: "POST" });
+      setRequests((current) => current.filter((item) => item.id !== rideId));
+      setRequestCountdowns((current) => {
+        const { [rideId]: _removed, ...rest } = current;
+        return rest;
+      });
+      setActionMessage(successMessage);
       void load();
     } catch (error) {
       setActionMessage(error instanceof Error ? error.message : "Could not decline ride.");
@@ -456,6 +525,19 @@ export function DriverHomeMobilePage({ user }: { user: SessionUser }) {
       setIsSyncing(false);
     }
   };
+
+  useEffect(() => {
+    if (!currentRequest || step !== "incoming" || isSyncing || currentRequestCountdown > 0) {
+      return;
+    }
+
+    if (autoRejectedRequestIdsRef.current.has(currentRequest.id)) {
+      return;
+    }
+
+    autoRejectedRequestIdsRef.current.add(currentRequest.id);
+    void rejectRide("Ride timed out and was declined automatically.");
+  }, [currentRequest, currentRequestCountdown, isSyncing, step]);
 
   const completeRide = async () => {
     if (!currentRequest) return;
@@ -678,7 +760,7 @@ export function DriverHomeMobilePage({ user }: { user: SessionUser }) {
                   </div>
                   <div className="relative flex h-16 w-16 items-center justify-center rounded-full border-4 border-muted">
                     <div className="absolute inset-0 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-                    <span className="text-lg font-bold">{currentRequest.countdownSeconds}s</span>
+                    <span className="text-lg font-bold">{currentRequestCountdown}s</span>
                   </div>
                 </div>
 

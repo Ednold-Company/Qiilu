@@ -14,6 +14,32 @@ import {
 export const driverRouter = Router();
 
 const kycDocumentTypes = ["DRIVERS_LICENSE", "GHANA_CARD", "VEHICLE_INSURANCE", "ROAD_WORTHINESS"] as const;
+const requestDeclineCooldownMs = 2 * 60 * 1000;
+const declinedRequestUntil = new Map<string, number>();
+
+function declineKey(driverId: string, rideId: string) {
+  return `${driverId}:${rideId}`;
+}
+
+function rememberDeclinedRequest(driverId: string, rideId: string) {
+  declinedRequestUntil.set(declineKey(driverId, rideId), Date.now() + requestDeclineCooldownMs);
+}
+
+function hasRecentlyDeclinedRequest(driverId: string, rideId: string) {
+  const key = declineKey(driverId, rideId);
+  const expiresAt = declinedRequestUntil.get(key);
+
+  if (!expiresAt) {
+    return false;
+  }
+
+  if (expiresAt <= Date.now()) {
+    declinedRequestUntil.delete(key);
+    return false;
+  }
+
+  return true;
+}
 
 function formatKycSubmission(submission: {
   id: string;
@@ -117,7 +143,7 @@ driverRouter.get("/requests", requireAuth, async (request: AuthenticatedRequest,
         : realtimeConnected
           ? null
           : "Realtime is reconnecting. Requests can still appear here while Qiilu falls back to polling.",
-    requests: openRequests.map((ride, index) => ({
+    requests: openRequests.filter((ride) => !hasRecentlyDeclinedRequest(driver.id, ride.id)).map((ride, index) => ({
       id: ride.id,
       source:
         ride.requestSource === "USSD" ? "USSD" : ride.requestSource === "SCHEDULED" ? "Scheduled" : "App",
@@ -286,6 +312,13 @@ driverRouter.post("/requests/:rideId/accept", requireAuth, async (request: Authe
 
 driverRouter.post("/requests/:rideId/reject", requireAuth, async (request: AuthenticatedRequest, response) => {
   const rideId = Array.isArray(request.params.rideId) ? request.params.rideId[0] : request.params.rideId;
+  const driverId = request.auth?.userId;
+
+  if (!driverId) {
+    response.status(401).json({ message: "Unauthorized" });
+    return;
+  }
+
   const existingRide = await prisma.ride.findUnique({
     where: { id: rideId }
   });
@@ -295,7 +328,9 @@ driverRouter.post("/requests/:rideId/reject", requireAuth, async (request: Authe
     return;
   }
 
-  if (existingRide.driverId && existingRide.driverId === request.auth?.userId) {
+  rememberDeclinedRequest(driverId, rideId);
+
+  if (existingRide.driverId && existingRide.driverId === driverId) {
     await releaseDriverFromRide(existingRide);
   }
 
@@ -309,7 +344,9 @@ driverRouter.post("/requests/:rideId/reject", requireAuth, async (request: Authe
     }
   });
 
-  const reassignedRide = await autoAssignRide(ride.id);
+  const reassignedRide = await autoAssignRide(ride.id, {
+    excludedDriverIds: [driverId]
+  });
 
   if (!reassignedRide) {
     realtimeGateway.broadcastQueueRefresh?.();
