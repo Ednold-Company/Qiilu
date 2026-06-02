@@ -739,11 +739,12 @@ export function DriverHomeDesktopPage({ user }: { user: SessionUser }) {
                 </div>
               </div>
             </div>
-            <div className="h-[400px] overflow-hidden">
+            <div className="relative h-[400px] overflow-hidden bg-[#e5e3df] dark:bg-[#15191f]">
               <PassengerLiveMap
                 pickup={request?.pickup}
                 destination={request?.destination}
                 currentCoords={currentCoords}
+                fullScreen
               />
             </div>
             <div className="flex items-center justify-between border-t border-border bg-card p-4">
@@ -1452,15 +1453,15 @@ export function DriverAccountDesktopPage({ user }: { user: SessionUser }) {
   const kycSelfieInputRef = useRef<HTMLInputElement | null>(null);
 
   const loadAccount = async () => {
-    const [mePayload, walletPayload, kycPayload] = await Promise.all([
+    const [mePayload, walletPayload, kycPayload] = await Promise.allSettled([
       fetchJson<MeResponse>("/auth/me"),
       fetchJson<DriverWalletResponse>(`/driver/wallet/${user.id}`),
       fetchJson<DriverKycResponse>(`/driver/kyc/${user.id}`)
     ]);
 
-    setMe(mePayload.user);
-    setWallet(walletPayload.wallet);
-    setKyc(kycPayload);
+    setMe(mePayload.status === "fulfilled" ? mePayload.value.user : null);
+    setWallet(walletPayload.status === "fulfilled" ? walletPayload.value.wallet : null);
+    setKyc(kycPayload.status === "fulfilled" ? kycPayload.value : null);
   };
 
   useEffect(() => {
@@ -1470,6 +1471,18 @@ export function DriverAccountDesktopPage({ user }: { user: SessionUser }) {
       setKyc(null);
     });
   }, [user.id]);
+
+  useEffect(() => {
+    const section = new URLSearchParams(window.location.search).get("section");
+
+    if (section === "profile") {
+      setActiveTab("profile");
+    }
+
+    if (section === "vehicle" || section === "documents") {
+      setActiveTab("documents");
+    }
+  }, []);
 
   const initials = user.name
     .split(" ")
@@ -1850,6 +1863,72 @@ export function DriverAccountDesktopPage({ user }: { user: SessionUser }) {
         </div>
       </div>
     </DriverDesktopShell>
+  );
+}
+
+export function DriverSafetyDesktopPage({ user }: { user: SessionUser }) {
+  return (
+    <DriverDesktopShell user={user} title="Safety Hub" active="account">
+      <div className="mx-auto grid max-w-6xl grid-cols-12 gap-8">
+        <div className="col-span-5 rounded-[2rem] border border-border bg-card p-8 shadow-sm">
+          <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+            <AlertTriangle className="h-7 w-7" />
+          </div>
+          <h2 className="text-3xl font-extrabold tracking-tight">Driver safety hub</h2>
+          <p className="mt-3 text-muted-foreground">
+            Safety actions are separated from Messages. During a live ride, the SOS action sends ride context to Qiilu operations.
+          </p>
+          <Link href="/driver/desktop" className="mt-6 inline-flex rounded-xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground">
+            Return to live dispatch
+          </Link>
+        </div>
+        <div className="col-span-7 grid gap-4">
+          <DriverDesktopInfoCard title="Trip SOS" description="Available inside active ride controls. It attaches driver, passenger, route, and ride state to the incident." />
+          <DriverDesktopInfoCard title="Location accuracy" description="Keep browser location permission enabled when online, otherwise dispatch and safety location data will be stale." />
+          <DriverDesktopInfoCard title="Incident follow-up" description="Safety incidents are visible to admins for review, escalation, and follow-up with both users." />
+        </div>
+      </div>
+    </DriverDesktopShell>
+  );
+}
+
+export function DriverSupportDesktopPage({ user }: { user: SessionUser }) {
+  return (
+    <DriverDesktopShell user={user} title="Help & Support" active="account">
+      <div className="mx-auto grid max-w-6xl grid-cols-12 gap-8">
+        <div className="col-span-5 rounded-[2rem] border border-border bg-card p-8 shadow-sm">
+          <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <HelpCircle className="h-7 w-7" />
+          </div>
+          <h2 className="text-3xl font-extrabold tracking-tight">Qiilu partner support</h2>
+          <p className="mt-3 text-muted-foreground">
+            Account, KYC, wallet, and ride issue guidance lives here. Passenger chat remains on the Messages page.
+          </p>
+          <div className="mt-6 flex gap-3">
+            <Link href="/driver/messages/desktop" className="rounded-xl border border-border px-5 py-3 text-sm font-bold">
+              Open messages
+            </Link>
+            <Link href="/driver/wallet/desktop" className="rounded-xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground">
+              Check wallet
+            </Link>
+          </div>
+        </div>
+        <div className="col-span-7 grid gap-4">
+          <DriverDesktopInfoCard title="KYC support" description="Use Account or KYC to upload missing front, back, selfie, and movement-check evidence." />
+          <DriverDesktopInfoCard title="Wallet support" description="Wallet shows top-up, withdrawal warnings, payout history, and pending withdrawal totals." />
+          <DriverDesktopInfoCard title="Ride support" description="Use ride history and messages to identify the affected ride before raising a dispute." />
+        </div>
+      </div>
+    </DriverDesktopShell>
+  );
+}
+
+function DriverDesktopInfoCard({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+      <div className="text-lg font-bold">{title}</div>
+      <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
+    </div>
   );
 }
 

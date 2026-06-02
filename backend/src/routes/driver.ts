@@ -671,7 +671,7 @@ driverRouter.get("/wallet/:userId", requireAuth, async (request: AuthenticatedRe
     return;
   }
 
-  const wallet = await prisma.wallet.findUnique({
+  let wallet = await prisma.wallet.findUnique({
     where: { userId: request.params.userId },
     include: {
       transactions: {
@@ -689,8 +689,33 @@ driverRouter.get("/wallet/:userId", requireAuth, async (request: AuthenticatedRe
   });
 
   if (!wallet) {
-    response.status(404).json({ message: "Wallet not found" });
-    return;
+    await prisma.wallet.create({
+      data: {
+        userId: request.params.userId
+      }
+    });
+
+    wallet = await prisma.wallet.findUnique({
+      where: { userId: request.params.userId },
+      include: {
+        transactions: {
+          orderBy: { createdAt: "desc" }
+        },
+        payoutRequests: {
+          orderBy: { createdAt: "desc" }
+        },
+        user: {
+          include: {
+            driverRides: true
+          }
+        }
+      }
+    });
+
+    if (!wallet) {
+      response.status(404).json({ message: "Wallet not found" });
+      return;
+    }
   }
 
   const completedRides = wallet.user.driverRides.filter((ride) => ride.status === "COMPLETED");

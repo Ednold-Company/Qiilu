@@ -1245,7 +1245,7 @@ export function DriverWalletMobilePage({ userId }: { userId: string }) {
 
 export function DriverMessagesMobilePage() {
   return (
-    <DriverShell title="Messages" active="account">
+    <DriverShell title="Messages" active="messages">
       <DriverEmpty
         title="No live driver chat threads yet"
         description="Driver messaging UI is in place, but passenger-driver messaging is still waiting for a dedicated realtime chat backend."
@@ -1276,6 +1276,64 @@ export function DriverMessagesMobilePage() {
         </div>
       </div>
     </DriverShell>
+  );
+}
+
+export function DriverSafetyMobilePage() {
+  return (
+    <DriverShell title="Safety Hub" active="account">
+      <div className="space-y-4">
+        <div className="rounded-[2rem] border border-border bg-card p-6 shadow-sm">
+          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+            <AlertTriangle className="h-6 w-6" />
+          </div>
+          <h2 className="text-2xl font-bold">Driver safety tools</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            SOS is available during an active trip. It sends incident details to Qiilu operations with the ride context.
+          </p>
+        </div>
+        <div className="grid gap-3">
+          <DriverSafetyCard title="Trip SOS" description="Use the SOS button inside an active ride when immediate support is needed." />
+          <DriverSafetyCard title="Passenger identity" description="Passenger name, phone, route, and ride ID are attached to safety reports." />
+          <DriverSafetyCard title="Location sharing" description="Keep location permission enabled while online so dispatch and safety tools stay accurate." />
+        </div>
+      </div>
+    </DriverShell>
+  );
+}
+
+export function DriverSupportMobilePage() {
+  return (
+    <DriverShell title="Help & Support" active="account">
+      <div className="space-y-4">
+        <div className="rounded-[2rem] border border-border bg-card p-6 shadow-sm">
+          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <HelpCircle className="h-6 w-6" />
+          </div>
+          <h2 className="text-2xl font-bold">Qiilu partner support</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Use these support paths for account, KYC, wallet, and ride issues. Live passenger chat stays in Messages.
+          </p>
+        </div>
+        <div className="grid gap-3">
+          <DriverSafetyCard title="KYC review" description="If documents are rejected, update them from Account or the KYC page." />
+          <DriverSafetyCard title="Wallet and payouts" description="Check Wallet for cash-out status, balance, and payout warnings." />
+          <DriverSafetyCard title="Ride disputes" description="For completed rides, share the ride ID and issue details with operations." />
+        </div>
+        <Link href="/driver/messages" className="flex h-12 items-center justify-center rounded-xl border border-border bg-card text-sm font-bold">
+          Open passenger messages
+        </Link>
+      </div>
+    </DriverShell>
+  );
+}
+
+function DriverSafetyCard({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+      <div className="font-bold">{title}</div>
+      <div className="mt-1 text-sm text-muted-foreground">{description}</div>
+    </div>
   );
 }
 
@@ -1336,7 +1394,7 @@ export function DriverAccountMobilePage({ sessionUser }: { sessionUser: SessionU
   const [me, setMe] = useState<MeResponse["user"] | null>(null);
   const [wallet, setWallet] = useState<DriverWalletResponse["wallet"] | null>(null);
   const [kyc, setKyc] = useState<DriverKycResponse | null>(null);
-  const [activeSection, setActiveSection] = useState<"overview" | "documents">("documents");
+  const [activeSection, setActiveSection] = useState<"overview" | "profile" | "vehicle" | "documents">("overview");
   const [documentType, setDocumentType] = useState("DRIVERS_LICENSE");
   const [documentNumber, setDocumentNumber] = useState("");
   const [legalName, setLegalName] = useState(sessionUser.name);
@@ -1357,15 +1415,15 @@ export function DriverAccountMobilePage({ sessionUser }: { sessionUser: SessionU
   const kycSelfieInputRef = useRef<HTMLInputElement | null>(null);
 
   const loadAccount = async () => {
-    const [mePayload, walletPayload, kycPayload] = await Promise.all([
+    const [mePayload, walletPayload, kycPayload] = await Promise.allSettled([
       fetchJson<MeResponse>("/auth/me"),
       fetchJson<DriverWalletResponse>(`/driver/wallet/${sessionUser.id}`),
       fetchJson<DriverKycResponse>(`/driver/kyc/${sessionUser.id}`)
     ]);
 
-    setMe(mePayload.user);
-    setWallet(walletPayload.wallet);
-    setKyc(kycPayload);
+    setMe(mePayload.status === "fulfilled" ? mePayload.value.user : null);
+    setWallet(walletPayload.status === "fulfilled" ? walletPayload.value.wallet : null);
+    setKyc(kycPayload.status === "fulfilled" ? kycPayload.value : null);
   };
 
   useEffect(() => {
@@ -1376,6 +1434,14 @@ export function DriverAccountMobilePage({ sessionUser }: { sessionUser: SessionU
         setKyc(null);
       });
   }, [sessionUser.id]);
+
+  useEffect(() => {
+    const section = new URLSearchParams(window.location.search).get("section");
+
+    if (section === "profile" || section === "vehicle" || section === "documents" || section === "overview") {
+      setActiveSection(section);
+    }
+  }, []);
 
   const initials = sessionUser.name
     .split(" ")
@@ -1413,12 +1479,12 @@ export function DriverAccountMobilePage({ sessionUser }: { sessionUser: SessionU
   };
 
   const links = [
-    { icon: Settings, label: "Edit Profile", href: "/driver/account" },
-    { icon: Car, label: "Vehicle Information", href: "/driver/account" },
+    { icon: Settings, label: "Edit Profile", href: "/driver/account?section=profile" },
+    { icon: Car, label: "Vehicle Information", href: "/driver/account?section=vehicle" },
     { icon: FileText, label: "Documents & KYC", href: "/driver/kyc" },
     { icon: CreditCard, label: "Bank & MoMo Details", href: "/driver/wallet" },
-    { icon: ShieldCheck, label: "Safety Hub", href: "/driver/messages" },
-    { icon: HelpCircle, label: "Help & Support", href: "/driver/messages" }
+    { icon: ShieldCheck, label: "Safety Hub", href: "/driver/safety" },
+    { icon: HelpCircle, label: "Help & Support", href: "/driver/support" }
   ];
 
   const submitKyc = async () => {
@@ -1541,21 +1607,22 @@ export function DriverAccountMobilePage({ sessionUser }: { sessionUser: SessionU
         </div>
       </div>
 
-      <div className="mt-6 flex rounded-xl border border-border bg-card p-1">
-        <button
-          type="button"
-          onClick={() => setActiveSection("overview")}
-          className={`flex-1 rounded-lg py-2 text-sm font-bold ${activeSection === "overview" ? "bg-primary text-white shadow-sm" : "text-muted-foreground"}`}
-        >
-          Overview
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveSection("documents")}
-          className={`flex-1 rounded-lg py-2 text-sm font-bold ${activeSection === "documents" ? "bg-primary text-white shadow-sm" : "text-muted-foreground"}`}
-        >
-          Documents
-        </button>
+      <div className="mt-6 grid grid-cols-2 gap-2 rounded-xl border border-border bg-card p-1">
+        {[
+          { key: "overview", label: "Overview" },
+          { key: "profile", label: "Profile" },
+          { key: "vehicle", label: "Vehicle" },
+          { key: "documents", label: "KYC" }
+        ].map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            onClick={() => setActiveSection(item.key as "overview" | "profile" | "vehicle" | "documents")}
+            className={`rounded-lg py-2 text-sm font-bold ${activeSection === item.key ? "bg-primary text-white shadow-sm" : "text-muted-foreground"}`}
+          >
+            {item.label}
+          </button>
+        ))}
       </div>
 
       {activeSection === "overview" ? (
@@ -1575,6 +1642,56 @@ export function DriverAccountMobilePage({ sessionUser }: { sessionUser: SessionU
             <span className="text-muted-foreground">›</span>
           </Link>
         ))}
+        </div>
+      ) : activeSection === "profile" ? (
+        <div className="mt-6 space-y-4 rounded-[2rem] border border-border bg-card p-5 shadow-sm">
+          <div>
+            <div className="text-lg font-bold">Edit profile</div>
+            <div className="text-sm text-muted-foreground">Manage the driver details passengers and dispatch see.</div>
+          </div>
+          <div className="grid gap-3 text-sm">
+            <StatCard label="Name" value={me?.name ?? sessionUser.name} />
+            <StatCard label="Phone" value={me?.phone ?? sessionUser.phone} />
+            <StatCard label="Email" value={me?.email ?? "Not set"} />
+            <StatCard label="Availability" value={statusText(me?.availability)} />
+          </div>
+          <label className="inline-flex h-12 cursor-pointer items-center justify-center rounded-xl bg-primary px-4 text-sm font-bold text-primary-foreground">
+            {uploadingProfileImage ? "Uploading..." : "Change profile photo"}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/jpg,image/webp"
+              className="hidden"
+              disabled={uploadingProfileImage}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) {
+                  void uploadProfileImage(file);
+                }
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
+          {profileMessage ? <div className="rounded-xl bg-muted/60 px-4 py-3 text-sm text-muted-foreground">{profileMessage}</div> : null}
+        </div>
+      ) : activeSection === "vehicle" ? (
+        <div className="mt-6 space-y-4 rounded-[2rem] border border-border bg-card p-5 shadow-sm">
+          <div>
+            <div className="text-lg font-bold">Vehicle information</div>
+            <div className="text-sm text-muted-foreground">Vehicle compliance is controlled through driver KYC documents.</div>
+          </div>
+          <div className="grid gap-3 text-sm">
+            <StatCard label="Vehicle insurance" value={(kyc?.requiredDocuments ?? []).includes("VEHICLE_INSURANCE") ? "Required" : "Submitted or not required"} />
+            <StatCard label="Road worthiness" value={(kyc?.requiredDocuments ?? []).includes("ROAD_WORTHINESS") ? "Required" : "Submitted or not required"} />
+            <StatCard label="Driver license" value={(kyc?.requiredDocuments ?? []).includes("DRIVERS_LICENSE") ? "Required" : "Submitted or not required"} />
+            <StatCard label="Verification" value={(kyc?.kycStatus ?? me?.kycStatus ?? "PENDING").replaceAll("_", " ")} />
+          </div>
+          <button
+            type="button"
+            onClick={() => setActiveSection("documents")}
+            className="h-12 rounded-xl bg-primary px-4 text-sm font-bold text-primary-foreground"
+          >
+            Update vehicle documents
+          </button>
         </div>
       ) : (
         <div className="mt-6 space-y-4">
