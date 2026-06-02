@@ -214,31 +214,49 @@ function MapSizeSync({
   zoom: number;
 }) {
   const map = useMap();
+  const [hasManualInteraction, setHasManualInteraction] = useState(false);
 
   useEffect(() => {
-    const sync = () => {
-      map.invalidateSize();
-      map.setView(center, zoom, { animate: false });
+    const markManualInteraction = () => {
+      setHasManualInteraction(true);
     };
 
-    const frame = window.requestAnimationFrame(sync);
-    const timeout = window.setTimeout(sync, 180);
+    map.on("dragstart zoomstart", markManualInteraction);
+
+    return () => {
+      map.off("dragstart zoomstart", markManualInteraction);
+    };
+  }, [map]);
+
+  useEffect(() => {
+    const syncSize = () => {
+      map.invalidateSize();
+    };
+
+    const frame = window.requestAnimationFrame(syncSize);
+    const timeout = window.setTimeout(syncSize, 180);
     const container = map.getContainer();
-    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(sync) : null;
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(syncSize) : null;
 
     if (observer) {
       observer.observe(container);
     }
 
-    window.addEventListener("resize", sync);
+    window.addEventListener("resize", syncSize);
 
     return () => {
       window.cancelAnimationFrame(frame);
       window.clearTimeout(timeout);
       observer?.disconnect();
-      window.removeEventListener("resize", sync);
+      window.removeEventListener("resize", syncSize);
     };
-  }, [center, map, zoom]);
+  }, [map]);
+
+  useEffect(() => {
+    if (!hasManualInteraction) {
+      map.setView(center, zoom, { animate: false });
+    }
+  }, [center, hasManualInteraction, map, zoom]);
 
   return null;
 }
