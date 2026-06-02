@@ -108,7 +108,12 @@ type PassengerRideItem = RideState & {
   } | null;
   paymentMethod: string;
   momoProvider: string | null;
+  momoReference: string | null;
   distanceKm: number;
+  safetyPin: string | null;
+  pickupGuidance: string | null;
+  trustedContactCount: number;
+  lowBandwidthBooking: boolean;
   createdAt: string;
 };
 
@@ -191,6 +196,40 @@ function mergePassengerRideIntoActiveRide(current: RideResponse | null, ride: Pa
       ...current.payment,
       method: ride.paymentMethod,
       provider: ride.momoProvider ?? current.payment.provider
+    }
+  };
+}
+
+function passengerRideItemToActiveRide(ride: PassengerRideItem): RideResponse {
+  return {
+    message: "Active ride restored",
+    ride: {
+      id: ride.id,
+      pickup: ride.pickup,
+      destination: ride.destination,
+      status: ride.status,
+      estimatedFareGhs: ride.estimatedFareGhs,
+      etaMinutes: ride.etaMinutes,
+      safetyPin: ride.safetyPin,
+      driver: ride.driver
+    },
+    safety: {
+      trustedContactCount: ride.trustedContactCount,
+      safetyShareEnabled: true,
+      pickupGuidance: ride.pickupGuidance ?? undefined
+    },
+    payment: {
+      method: ride.paymentMethod,
+      provider: ride.momoProvider,
+      status: ride.momoReference ? "pending" : ride.paymentMethod === "CASH" ? "accepted" : "pending",
+      momoReference: ride.momoReference,
+      authorizationUrl: null
+    },
+    estimate: {
+      provider: "saved-ride",
+      distanceKm: ride.distanceKm,
+      durationMinutes: ride.etaMinutes,
+      fareGhs: ride.estimatedFareGhs
     }
   };
 }
@@ -569,6 +608,52 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
     return () => {
       socket.close();
       socketRef.current = null;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    let active = true;
+
+    const restoreActiveRide = async () => {
+      try {
+        const payload = await fetchJson<{ rides: PassengerRideItem[] }>("/passenger/rides", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const currentRide = payload.rides.find((ride) =>
+          ["SEARCHING", "ACCEPTED", "IN_PROGRESS"].includes(ride.status)
+        );
+
+        if (!active || !currentRide) {
+          return;
+        }
+
+        setActiveRide((existing) => existing ?? passengerRideItemToActiveRide(currentRide));
+        setEstimate((existing) =>
+          existing ?? {
+            provider: "saved-ride",
+            distanceKm: currentRide.distanceKm,
+            durationMinutes: currentRide.etaMinutes,
+            fareGhs: currentRide.estimatedFareGhs
+          }
+        );
+        setPickup((existing) => existing || currentRide.pickup);
+        setDestination((existing) => existing || currentRide.destination);
+        setFeedback(
+          currentRide.status === "ACCEPTED"
+            ? "A driver has accepted your ride."
+            : currentRide.status === "IN_PROGRESS"
+              ? "Your ride is in progress."
+              : "Qiilu is searching for available drivers near your pickup."
+        );
+      } catch {
+        // The booking form remains available if no active ride can be restored.
+      }
+    };
+
+    void restoreActiveRide();
+
+    return () => {
+      active = false;
     };
   }, [token]);
 
