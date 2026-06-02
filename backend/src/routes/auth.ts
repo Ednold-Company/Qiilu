@@ -249,11 +249,26 @@ authRouter.post("/request-otp", async (request, response) => {
 
   const code = generateOtpCode();
   const expiresAt = new Date(Date.now() + 1000 * 60 * 10);
-  const delivery = await deliverOtp({
-    email,
-    code,
-    purpose
-  });
+  let delivery;
+
+  try {
+    delivery = await deliverOtp({
+      email,
+      code,
+      purpose
+    });
+  } catch (error) {
+    console.error("[qiilu:otp:delivery-failed]", {
+      email,
+      purpose,
+      message: error instanceof Error ? error.message : "OTP delivery failed"
+    });
+    response.status(503).json({
+      message: "OTP email delivery is temporarily unavailable. Check the configured mail provider credentials.",
+      code: "OTP_DELIVERY_UNAVAILABLE"
+    });
+    return;
+  }
 
   await prisma.otpCode.create({
     data: {

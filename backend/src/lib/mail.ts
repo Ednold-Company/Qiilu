@@ -14,6 +14,10 @@ export type OtpDeliveryResult = {
   developmentCode?: string;
 };
 
+function shouldExposeDevelopmentCode() {
+  return process.env.NODE_ENV !== "production" || String(process.env.OTP_EXPOSE_DEVELOPMENT_CODE ?? "").toLowerCase() === "true";
+}
+
 function getOtpSubject(purpose: OtpDeliveryInput["purpose"]) {
   if (purpose === "SIGNUP") {
     return "Verify your Qiilu account";
@@ -304,15 +308,13 @@ async function deliverViaGmailApi(input: OtpDeliveryInput): Promise<OtpDeliveryR
   };
 }
 
-export async function deliverOtp(input: OtpDeliveryInput): Promise<OtpDeliveryResult> {
-  const provider = (process.env.OTP_PROVIDER ?? "console").trim().toLowerCase();
-
+async function deliverViaProvider(provider: string, input: OtpDeliveryInput): Promise<OtpDeliveryResult> {
   if (provider === "console") {
     console.log(`[qiilu:otp] ${input.email} ${input.purpose} code ${input.code}`);
     return {
       provider: "console",
       deliveryHint: `OTP generated for ${input.email}`,
-      developmentCode: input.code
+      developmentCode: shouldExposeDevelopmentCode() ? input.code : undefined
     };
   }
 
@@ -332,4 +334,24 @@ export async function deliverOtp(input: OtpDeliveryInput): Promise<OtpDeliveryRe
     provider,
     deliveryHint: `OTP queued for ${input.email}`
   };
+}
+
+export async function deliverOtp(input: OtpDeliveryInput): Promise<OtpDeliveryResult> {
+  const provider = (process.env.OTP_PROVIDER ?? "console").trim().toLowerCase();
+  const fallbackProvider = process.env.OTP_FALLBACK_PROVIDER?.trim().toLowerCase();
+
+  try {
+    return await deliverViaProvider(provider, input);
+  } catch (error) {
+    if (fallbackProvider && fallbackProvider !== provider) {
+      console.error("[qiilu:otp:fallback]", {
+        provider,
+        fallbackProvider,
+        message: error instanceof Error ? error.message : "OTP provider failed"
+      });
+      return deliverViaProvider(fallbackProvider, input);
+    }
+
+    throw error;
+  }
 }
