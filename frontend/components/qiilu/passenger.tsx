@@ -1005,6 +1005,9 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
       : estimate?.destination
         ? { lat: estimate.destination.lat, lng: estimate.destination.lng }
         : null;
+  const driverCoords = driverLocation
+    ? { lat: driverLocation.lat, lng: driverLocation.lng }
+    : null;
   const mobileStep =
     activeRide?.ride.status === "SEARCHING"
       ? "searching"
@@ -1088,9 +1091,10 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
                   route={routePath}
                   pickupCoords={pickupCoords}
                   destinationCoords={destinationCoords}
-                  driverCoords={driverLocation ? { lat: driverLocation.lat, lng: driverLocation.lng } : null}
+                  driverCoords={driverCoords}
                   currentCoords={liveLocation}
                   fullScreen
+                  resolveTextLocations={false}
                 />
               ) : (
                 <>
@@ -1413,9 +1417,10 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
               route={routePath}
               pickupCoords={pickupCoords}
               destinationCoords={destinationCoords}
-              driverCoords={driverLocation ? { lat: driverLocation.lat, lng: driverLocation.lng } : null}
+              driverCoords={driverCoords}
               currentCoords={liveLocation}
               fullScreen
+              resolveTextLocations={false}
             />
           ) : (
             <div className="absolute inset-0 opacity-20 dark:opacity-10 [background-image:linear-gradient(#000_1px,transparent_1px),linear-gradient(90deg,#000_1px,transparent_1px)] dark:[background-image:linear-gradient(rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:40px_40px]" />
@@ -1474,6 +1479,7 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
       />
       </div>
 
+      {/* Legacy mobile passenger UI removed; PassengerMobileExact above is the active mobile UI.
       <div className="hidden min-h-screen bg-background text-foreground lg:hidden">
         <div className="relative h-[46vh] overflow-hidden bg-[#e5e3df] dark:bg-[#15191f]">
           {pickup || liveLocation ? (
@@ -1483,8 +1489,9 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
               route={routePath}
               pickupCoords={pickupCoords}
               destinationCoords={destinationCoords}
-              driverCoords={driverLocation ? { lat: driverLocation.lat, lng: driverLocation.lng } : null}
+              driverCoords={driverCoords}
               currentCoords={liveLocation}
+              resolveTextLocations={false}
             />
           ) : (
             <div className="absolute inset-0 opacity-20 dark:opacity-10 [background-image:linear-gradient(#000_1px,transparent_1px),linear-gradient(90deg,#000_1px,transparent_1px)] dark:[background-image:linear-gradient(rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:40px_40px]" />
@@ -1741,6 +1748,7 @@ export function PassengerScreen({ user, token }: { user: SessionUser; token: str
           </Link>
         </div>
       </div>
+      */}
     </>
   );
 }

@@ -15,6 +15,7 @@ type PassengerLiveMapProps = {
   currentCoords?: { lat: number; lng: number } | null;
   fullScreen?: boolean;
   backgroundMode?: boolean;
+  resolveTextLocations?: boolean;
 };
 
 const pickupIcon = L.divIcon({
@@ -194,7 +195,7 @@ function getTileConfig(styleId?: string | null) {
       attribution:
         '&copy; <a href="https://www.mapbox.com/about/maps/">Mapbox</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       isMapbox: true,
-      url: `https://api.mapbox.com/styles/v1/${styleId}/tiles/512/{z}/{x}/{y}@2x?access_token=${mapboxPublicToken}`
+      url: `https://api.mapbox.com/styles/v1/${styleId}/tiles/512/{z}/{x}/{y}?access_token=${mapboxPublicToken}`
     };
   }
 
@@ -270,7 +271,8 @@ export default function PassengerLiveMap({
   driverCoords,
   currentCoords,
   fullScreen = false,
-  backgroundMode = false
+  backgroundMode = false,
+  resolveTextLocations = true
 }: PassengerLiveMapProps) {
   const [tileMode, setTileMode] = useState<"custom" | "defaultMapbox" | "osm">(
     mapboxPublicToken ? (allowCustomMapboxStyle ? "custom" : "defaultMapbox") : "osm"
@@ -291,7 +293,7 @@ export default function PassengerLiveMap({
   useEffect(() => {
     let cancelled = false;
 
-    if (!pickup?.trim() || pickupCoords || currentCoords) {
+    if (!resolveTextLocations || !pickup?.trim() || pickupCoords || currentCoords) {
       setPreviewPickupLocation(null);
       return () => {
         cancelled = true;
@@ -322,12 +324,12 @@ export default function PassengerLiveMap({
     return () => {
       cancelled = true;
     };
-  }, [currentCoords, pickup, pickupCoords]);
+  }, [currentCoords, pickup, pickupCoords, resolveTextLocations]);
 
   useEffect(() => {
     let cancelled = false;
 
-    if (!destination?.trim() || destinationCoords) {
+    if (!resolveTextLocations || !destination?.trim() || destinationCoords) {
       setPreviewDestinationLocation(null);
       return () => {
         cancelled = true;
@@ -358,7 +360,7 @@ export default function PassengerLiveMap({
     return () => {
       cancelled = true;
     };
-  }, [destination, destinationCoords]);
+  }, [destination, destinationCoords, resolveTextLocations]);
 
   const pickupLocation = useMemo(() => {
     if (pickupCoords) {
@@ -369,7 +371,7 @@ export default function PassengerLiveMap({
       };
     }
 
-    if (pickup?.trim()) {
+    if (resolveTextLocations && pickup?.trim()) {
       const knownPickup = resolveLocation(pickup);
 
       if (knownPickup) {
@@ -390,7 +392,7 @@ export default function PassengerLiveMap({
     }
 
     return fallbackLocation;
-  }, [currentCoords, fallbackLocation, pickup, pickupCoords, previewPickupLocation]);
+  }, [currentCoords, fallbackLocation, pickup, pickupCoords, previewPickupLocation, resolveTextLocations]);
   const destinationLocation = useMemo(() => {
     if (destinationCoords) {
       return {
@@ -400,12 +402,12 @@ export default function PassengerLiveMap({
       };
     }
 
-    if (destination?.trim()) {
+    if (resolveTextLocations && destination?.trim()) {
       return resolveLocation(destination) ?? previewDestinationLocation;
     }
 
     return null;
-  }, [destination, destinationCoords, previewDestinationLocation]);
+  }, [destination, destinationCoords, previewDestinationLocation, resolveTextLocations]);
 
   const center: [number, number] = destinationLocation
     ? [
@@ -496,6 +498,9 @@ export default function PassengerLiveMap({
           url={tileConfig.url}
           tileSize={tileConfig.isMapbox ? 512 : 256}
           zoomOffset={tileConfig.isMapbox ? -1 : 0}
+          updateWhenIdle
+          updateWhenZooming={false}
+          keepBuffer={2}
           eventHandlers={{
             tileerror: handleTileError
           }}
